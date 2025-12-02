@@ -17,7 +17,10 @@
 		<br>Calendar sync future days<br>
 		<input type="text" size="30" name="ctwpsync_import_future" id="ctwpsync_import_future" class="text_box" placeholder="380" value="<?php echo $saved_data ? $saved_data['import_future'] : '' ; ?>" required> 
 		<br>Resource type for categories, use -1 to disable categories management<br>
-		<input type="text" size="30" name="ctwpsync_resourcetype_for_categories" id="ctwpsync_resourcetype_for_categories" class="text_box" placeholder="-1" value="<?php echo $saved_data ? $saved_data['resourcetype_for_categories'] : '' ; ?>" required> 
+		<input type="text" size="30" name="ctwpsync_resourcetype_for_categories" id="ctwpsync_resourcetype_for_categories" class="text_box" placeholder="-1" value="<?php echo $saved_data ? $saved_data['resourcetype_for_categories'] : '' ; ?>" required>
+		<br>Name of a custom attribute in Events Manager. When set, this plugin will not download event images, but directly embed them from ChurchTools.<br>
+        Must be defined in the <a href="https://wp-events-plugin.com/documentation/event-attributes/#enablingactivating">Events Manager settings</a><br>
+		<input type="text" size="30" name="ctwpsync_em_image_attr" id="ctwpsync_em_image_attr" class="text_box" placeholder="disabled" value="<?php echo $saved_data ? $saved_data['em_image_attr'] : '' ; ?>">
 		<input type="submit" value="Save">
 		<p><strong>Last updated:</strong> <?php echo $lastupdated; ?></p>
 		<p><strong>Sync duration:</strong> <?php echo $lastsyncduration; ?></p>
