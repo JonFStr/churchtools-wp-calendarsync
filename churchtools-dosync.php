@@ -397,6 +397,15 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 			}
 			// Fix for Events Manager 5.8+ and 7.x - RSVP must be explicitly set to false
 			$event->event_rsvp = false;
+
+			// Save event image URL to custom attribute, if enabled
+			$img_attr_name = get_option( 'ctwpsync_options' )['em_image_attr'] ?? '';
+			if ( $imageURL != null && ! empty( $img_attr_name ) ) {
+				// Image embedding enabled, store URL instead of downloading image
+				$event->event_attributes[ $img_attr_name ] = $imageURL;
+				logDebug( "Stored image URL " . $imageURL . " for " . $imageName . " in custom attribute " . $img_attr_name );
+			}
+
 			$saveResult= $event->save();
 			if ($saveResult) {
 				logDebug("Saved ct event id: ".$ctCalEntry->getId(). " WP event ID ".$event->event_id." post id: ".$event->ID." result: ".$saveResult." serialized: ".serialize($saveResult) );
@@ -408,8 +417,9 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 					'post_status' => 'publish'
 				));
 
-				if ($imageURL != null) {
-					$attachmentID= setEventImage($imageURL, $imageName, $event->ID, $sDate);
+				if ( $imageURL != null && empty( $img_attr_name ) ) {
+					// image embedding is disabled, download the image
+					$attachmentID = downloadEventImage( $imageURL, $imageName, $event->ID, $sDate );
 					logDebug("Attached image ".$imageName." from ".$imageURL." as attachement ".$attachmentID);
 				}
 				if ($addMode) {
@@ -646,7 +656,7 @@ function cleanupOldEntries($startDate, $processingStart) {
  * $filename is the name of the file
  * first we need to upload the file into the wp upload folder.
  */
-function setEventImage(string $fileURL, string $fileName, int $postID, \DateTime $eventDate) {
+function downloadEventImage(string $fileURL, string $fileName, int $postID, \DateTime $eventDate) {
 	$uploadPart= $eventDate->format('Y/m');
 	// Get upload dir
 	$upload_dir    = wp_upload_dir();

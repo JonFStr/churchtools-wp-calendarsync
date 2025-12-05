@@ -98,6 +98,7 @@ function save_ctwpsync_settings() {
 	$data['import_past'] = trim($_POST['ctwpsync_import_past']);
 	$data['import_future'] = trim($_POST['ctwpsync_import_future']);
     $data['resourcetype_for_categories'] = trim($_POST['ctwpsync_resourcetype_for_categories']);
+	$data['em_image_attr'] = trim( $_POST['ctwpsync_em_image_attr'] );
 	if($saved_data) {
 		update_option( 'ctwpsync_options',  $data );
 	}else{
@@ -251,6 +252,31 @@ function ctwpsync_initplugin()
     }
 }
 add_action( 'plugins_loaded', 'ctwpsync_initplugin' );
+
+/**
+ * Called when Events Manager wants to retrieve the URL of an event's image.
+ *
+ * When the attribute name is set, replace the image URL for the event with the embed URL saved in the custom attribute.
+ *
+ * @param string $em_image_url Original image URL
+ * @param EM_Event $em_event Event in question
+ */
+function ctwpsync_override_event_image( $em_image_url, $em_event ) {
+	//Retrieve attribute name from options
+	$attr_name = get_option( 'ctwpsync_options' )['em_image_attr'] ?? '';
+
+	//Embedding has to be enabled (attribute name set),
+	//then local images take precedence, only override URL if it isn't set anyway
+	if ( ! empty( $attr_name ) && empty( $em_image_url ) && array_key_exists( $attr_name, $em_event->event_attributes ) ) {
+		$em_image_url        = $em_event->event_attributes[ $attr_name ];
+		$em_event->image_url = $em_image_url;
+	}
+
+	return $em_image_url;
+}
+
+add_filter( 'em_object_get_image_url', 'ctwpsync_override_event_image', 10, 2 );
+
 
 //function ctwpsync_cron_schedules($schedules){
 //    if(!isset($schedules["5min"])){
