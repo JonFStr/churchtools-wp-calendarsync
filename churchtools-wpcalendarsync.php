@@ -19,15 +19,18 @@
  * Domain Path:       /languages
  * Tags:              churchtools, events manager, sync, calendar
  * Requires at least: 5.8
- * Requires PHP:      8.0
+ * Requires PHP:      8.2
  * Tested up to:      6.3.1
  * Stable tag:        main
  *
  */
 
+// Load PHP 8.2 classes
+require_once plugin_dir_path(__FILE__) . 'includes/Logger.php';
+require_once plugin_dir_path(__FILE__) . 'includes/SyncConfig.php';
 
-add_action ('admin_menu', 'ctwpsync_setup_menu'  );
-add_action('save_ctwpsync_settings', 'save_ctwpsync_settings' );
+add_action('admin_menu', 'ctwpsync_setup_menu');
+add_action('save_ctwpsync_settings', 'save_ctwpsync_settings');
 
 /**
  * Currently plugin version.
@@ -36,126 +39,108 @@ add_action('save_ctwpsync_settings', 'save_ctwpsync_settings' );
  */
 define( 'CTWPSYNC_VERSION', '1.2.0' );
 
-function ctwpsync_setup_menu() {
-	add_options_page('ChurchTools Calendar Importer','ChurchTools Calsync','manage_options','churchtools-wpcalendarsync','ctwpsync_dashboard');
-	add_action('admin_init', 'register_ctwpsync_settings' );
+function ctwpsync_setup_menu(): void {
+	add_options_page('ChurchTools Calendar Importer', 'ChurchTools Calsync', 'manage_options', 'churchtools-wpcalendarsync', 'ctwpsync_dashboard');
+	add_action('admin_init', 'register_ctwpsync_settings');
 }
-function register_ctwpsync_settings(){
-	register_setting( 'ctwpsync-group', 'ctwpsync_url');    // URL to the churchtools installation
-	register_setting( 'ctwpsync-group', 'ctwpsync_apitoken');   // API auth token
-	register_setting( 'ctwpsync-group', 'ctwpsync_ids');        // Calendar ID's to sync from
-	register_setting( 'ctwpsync-group', 'ctwpsync_ids_categories'); // Category for the above calendar id
-	register_setting( 'ctwpsync-group', 'ctwpsync_import_past');    // Days in the past to sync
-	register_setting( 'ctwpsync-group', 'ctwpsync_import_future');  // Days in the future to sync
-	register_setting( 'ctwpsync-group', 'ctwpsync_resourcetype_for_categories');    // Sync categories from resources
-    $myPage= isset($_GET['page']) ? $_GET['page'] : "";
-	if ( $myPage === str_replace('.php','',basename(__FILE__)) ) {
-		if(!empty($_POST['ctwpsync_url']) && !empty($_POST['ctwpsync_apitoken'])){
+
+function register_ctwpsync_settings(): void {
+	register_setting('ctwpsync-group', 'ctwpsync_url'); // URL to the churchtools installation
+	register_setting('ctwpsync-group', 'ctwpsync_apitoken'); // API auth token
+	register_setting('ctwpsync-group', 'ctwpsync_ids'); // Calendar IDs to sync from
+	register_setting('ctwpsync-group', 'ctwpsync_ids_categories'); // Category for the above calendar id
+	register_setting('ctwpsync-group', 'ctwpsync_import_past'); // Days in the past to sync
+	register_setting('ctwpsync-group', 'ctwpsync_import_future'); // Days in the future to sync
+	register_setting('ctwpsync-group', 'ctwpsync_resourcetype_for_categories'); // Sync categories from resources
+
+	$myPage = $_GET['page'] ?? '';
+	if ($myPage === str_replace('.php', '', basename(__FILE__))) {
+		if (!empty($_POST['ctwpsync_url']) && !empty($_POST['ctwpsync_apitoken'])) {
 			save_ctwpsync_settings();
 		}
 	}
 }
-function ctwpsync_dashboard() {
-	$saved_data =  get_option('ctwpsync_options');
-    if (gettype($saved_data) == "string") {
-        // Under some circumstances this could be returned as a string...
-        $saved_data = $saved_data ? unserialize($saved_data) : null ;
-    }
+function ctwpsync_dashboard(): void {
+	$saved_data = get_option('ctwpsync_options');
 	$lastupdated = get_transient('churchtools_wpcalendarsync_lastupdated');
 	$lastsyncduration = get_transient('churchtools_wpcalendarsync_lastsyncduration');
-	// $saved_data = $saved_data ? unserialize($saved_data) : null ;
-    if (is_plugin_active('events-manager/events-manager.php')) {
-        include_once (plugin_dir_path( __FILE__ ) .  'dashboard/dashboard_view.php');
-    } else {
-        echo "<div>";
-        echo "<h2>ChurchTools Calendar Sync requires an active 'Events Manager' plugin</h2>";
-        echo "<p>Please install and activate it first</p>";
-        echo "<p><a href='https://de.wordpress.org/plugins/events-manager/'>https://de.wordpress.org/plugins/events-manager/</a></p>";
-        echo "</div>";
 
-    }
+	if (is_plugin_active('events-manager/events-manager.php')) {
+		include_once(plugin_dir_path(__FILE__) . 'dashboard/dashboard_view.php');
+	} else {
+		echo "<div>";
+		echo "<h2>ChurchTools Calendar Sync requires an active 'Events Manager' plugin</h2>";
+		echo "<p>Please install and activate it first</p>";
+		echo "<p><a href='https://de.wordpress.org/plugins/events-manager/'>https://de.wordpress.org/plugins/events-manager/</a></p>";
+		echo "</div>";
+	}
 }
 
-// this function will handle the ajax call
-function save_ctwpsync_settings() {
-	$data = [];
-	$saved_data =  get_option('ctwpsync_options');
-	$data['url'] = rtrim(trim($_POST['ctwpsync_url']),'/').'/';
-	$data['apitoken'] = trim($_POST['ctwpsync_apitoken']);
-	$ids=trim($_POST['ctwpsync_ids']);
-	$data['ids']=[];
-	foreach(preg_split('/\D/',$ids) as $id){
-		if(intval($id)>0){
-			$data['ids'][] = intval($id);
-		}
+/**
+ * Handle the ajax call to save settings
+ */
+function save_ctwpsync_settings(): void {
+	$config = SyncConfig::fromPost();
+	$data = $config->toArray();
+
+	$saved_data = get_option('ctwpsync_options');
+	if ($saved_data) {
+		update_option('ctwpsync_options', $data);
+	} else {
+		add_option('ctwpsync_options', $data);
 	}
-    // Don't sort ID's, otherwise the category assignment gets wrong
-	$ids_categories=trim($_POST['ctwpsync_ids_categories']);
-	$data['ids_categories']=[];
-	foreach(preg_split('/,/',$ids_categories) as $id_cat){
-        $data['ids_categories'][] = trim($id_cat);
-	}
-    // Don't sort ID's, otherwise the category assignment gets wrong
-	$data['import_past'] = trim($_POST['ctwpsync_import_past']);
-	$data['import_future'] = trim($_POST['ctwpsync_import_future']);
-    $data['resourcetype_for_categories'] = trim($_POST['ctwpsync_resourcetype_for_categories']);
-	$data['em_image_attr'] = trim( $_POST['ctwpsync_em_image_attr'] );
-	if($saved_data) {
-		update_option( 'ctwpsync_options',  $data );
-	}else{
-		add_option( 'ctwpsync_options',  serialize($data) );
-	}
+
 	do_action('ctwpsync_includeChurchcalSync');
-	//ctwpsync_getUpdatedCalendarEvents();
 }
 
- /**
+/**
  * Schedule the event when the plugin is activated, if not already scheduled
  * and run it immediately for the first time
  */
-register_activation_hook( __FILE__, 'ctwpsync_activation' );
-function ctwpsync_activation() {
+register_activation_hook(__FILE__, 'ctwpsync_activation');
+function ctwpsync_activation(): void {
 	// Clear ALL existing scheduled events for this hook first to prevent duplicates
 	// This is necessary because wp_next_scheduled() doesn't check arguments,
 	// so multiple events with different args can be scheduled
-	wp_clear_scheduled_hook( 'ctwpsync_hourly_event' );
+	wp_clear_scheduled_hook('ctwpsync_hourly_event');
 
 	// Now schedule a fresh event
 	// Store the logged in user, so the cron job works as the same user
-	$args = [ is_user_logged_in(), wp_get_current_user() ];
-	wp_schedule_event( current_time( 'timestamp' ), 'hourly', 'ctwpsync_hourly_event', $args);
+	$args = [is_user_logged_in(), wp_get_current_user()];
+	wp_schedule_event(current_time('timestamp'), 'hourly', 'ctwpsync_hourly_event', $args);
 }
+
 /**
  * Hook the function to run every hour
- * 
+ *
  * We need to pass in the user
  */
 add_action('ctwpsync_hourly_event', 'do_this_ctwpsync_hourly', 10, 2);
-function do_this_ctwpsync_hourly($is_user_logged_in, $current_user) {
-    wp_set_current_user($current_user);
-    do_action('ctwpsync_includeChurchcalSync');
-	if( function_exists('ctwpsync_getUpdatedCalendarEvents')) {
+function do_this_ctwpsync_hourly(bool $is_user_logged_in, $current_user): void {
+	wp_set_current_user($current_user);
+	do_action('ctwpsync_includeChurchcalSync');
+	if (function_exists('ctwpsync_getUpdatedCalendarEvents')) {
 		$result = ctwpsync_getUpdatedCalendarEvents();
-    }
-}
-add_action('ctwpsync_includeChurchcalSync', 'ctwpsync_includeChurchcalSync');
-function ctwpsync_includeChurchcalSync(){
-	include( plugin_dir_path( __FILE__ ) . 'churchtools-dosync.php');
-	//include( plugin_dir_path( __FILE__ ) . 'helper.php');
+	}
 }
 
+add_action('ctwpsync_includeChurchcalSync', 'ctwpsync_includeChurchcalSync');
+function ctwpsync_includeChurchcalSync(): void {
+	include(plugin_dir_path(__FILE__) . 'churchtools-dosync.php');
+}
 
 /**
  * Clear the scheduled event when the plugin is disabled
  */
-register_deactivation_hook( __FILE__, 'ctwpsync_deactivation' );
-function ctwpsync_deactivation() {
-	wp_clear_scheduled_hook( 'ctwpsync_hourly_event' );
+register_deactivation_hook(__FILE__, 'ctwpsync_deactivation');
+function ctwpsync_deactivation(): void {
+	wp_clear_scheduled_hook('ctwpsync_hourly_event');
 }
 
-/* table holding ct event id and wp event id mapping */
-function ctwpsync_initplugin()
-{
+/**
+ * Initialize plugin - create tables and run migrations
+ */
+function ctwpsync_initplugin(): void {
     global $wpdb;
 
     // Clean up duplicate cron events that may have been created
@@ -261,15 +246,17 @@ add_action( 'plugins_loaded', 'ctwpsync_initplugin' );
  *
  * @param string $em_image_url Original image URL
  * @param EM_Event $em_event Event in question
+ * @return string The image URL (possibly overridden)
  */
-function ctwpsync_override_event_image( $em_image_url, $em_event ) {
-	//Retrieve attribute name from options
-	$attr_name = get_option( 'ctwpsync_options' )['em_image_attr'] ?? '';
+function ctwpsync_override_event_image(string $em_image_url, $em_event): string {
+	// Retrieve attribute name from options
+	$options = get_option('ctwpsync_options');
+	$attr_name = is_array($options) ? ($options['em_image_attr'] ?? '') : '';
 
-	//Embedding has to be enabled (attribute name set),
-	//then local images take precedence, only override URL if it isn't set anyway
-	if ( ! empty( $attr_name ) && empty( $em_image_url ) && array_key_exists( $attr_name, $em_event->event_attributes ) ) {
-		$em_image_url        = $em_event->event_attributes[ $attr_name ];
+	// Embedding has to be enabled (attribute name set),
+	// then local images take precedence, only override URL if it isn't set anyway
+	if (!empty($attr_name) && empty($em_image_url) && array_key_exists($attr_name, $em_event->event_attributes)) {
+		$em_image_url = $em_event->event_attributes[$attr_name];
 		$em_event->image_url = $em_image_url;
 	}
 
