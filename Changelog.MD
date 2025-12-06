@@ -1,5 +1,10 @@
 # churchtools-wp-calendarsync changelog
 
+## 2025-12-06
+- Release v1.2.0
+- **Option added to deliver images directly from churchtools**
+  - Thanks to @JonFStr
+
 ## 2025-10-29
 - Release v1.1.0
 - **Events Manager 7.2+ Compatibility**

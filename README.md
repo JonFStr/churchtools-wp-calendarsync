@@ -15,6 +15,7 @@ https://de.wordpress.org/plugins/events-manager/
 - Event categories can be assigned via churchtool resources
 - The title, description and location are synced to wordpress
 - The image of the calendar entry is synced to wordpress
+  or optionally just referenced to churchtool
 - Support for all-day events
 - Sync window is specified by n days in the past and m days in the future
 - Uses the modern REST api of churchtools
@@ -64,7 +65,11 @@ event manager, the church tool sync process will not touch these.
 - Enter your values and hit save, a first sync cycle will start, so be patient
 - After the sync cycle is finished, the last sync and the sync duration are displayed
 - Now the sync is started every 60 minutes
-
+- In the default configuration, images and files are downloaded
+  from churchtool and stored inside your wordpress installation.
+  Just enable this in the wordpress config page of the plugin.
+  __Please__ note, that this only works for public accessible calendars.
+  
 ## Finding calendar and resource ID's
 You have to put in the calendar ID's for the
 calendars to sync.
@@ -105,4 +110,4 @@ node main.js -r
   plugin. This way, the owner of the new events will be that user
   and you can see who created them
 
-(c) 2023 Aarboard a.schild@aarboard.ch
+(c) 2023-2025 Aarboard a.schild@aarboard.ch
