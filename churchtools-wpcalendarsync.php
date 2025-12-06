@@ -19,9 +19,10 @@
  * Domain Path:       /languages
  * Tags:              churchtools, events manager, sync, calendar
  * Requires at least: 5.8
+ * Requires PHP:      8.0
  * Tested up to:      6.3.1
  * Stable tag:        main
- * 
+ *
  */
 
 
