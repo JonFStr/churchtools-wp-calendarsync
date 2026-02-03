@@ -426,32 +426,19 @@ function processCalendarEntry(
 				}
 				if ($addMode) {
 					// Keeps track of ct event id and wp event id for subsequent updates+deletions
-					// Retry logic for deadlock errors
-					$maxRetries = 3;
-					$retryCount = 0;
-					$insertSuccess = false;
-					while ($retryCount < $maxRetries && !$insertSuccess) {
-						$insertSuccess = $wpdb->insert($wpctsync_tablename, array(
-							'ct_id' => $ctCalEntry->getId(),
-							'wp_id' => $event->event_id,
-							'ct_image_id' => $newCtImageID,
-							'ct_flyer_id' => $newCTFlyerId,
-							'wp_flyer_id' => $newWPFlyerId,
-							'last_seen' => date('Y-m-d H:i:s'),
-							'event_start' => $ctCalEntry->getStartDate(),
-							'event_end' => $ctCalEntry->getEndDate(),
-							'ct_repeating' => $isRepeating ? 1 : 0
-						));
-						if (!$insertSuccess && stripos($wpdb->last_error, 'Deadlock') !== false) {
-							$retryCount++;
-							logDebug("Deadlock detected on insert, retry $retryCount of $maxRetries for ct_id: ".$ctCalEntry->getId());
-							usleep(100000 * $retryCount); // Wait 100ms, 200ms, 300ms
-						} else {
-							break;
-						}
-					}
-					if (!$insertSuccess) {
-						logError("Error inserting mapping, duplicates will occur: ".$wpdb->last_error);
+					if (!$wpdb->insert($wpctsync_tablename, array(
+						'ct_id' => $ctCalEntry->getId(),
+						'wp_id' => $event->event_id,
+						'ct_image_id' => $newCtImageID,
+						'ct_flyer_id' => $newCTFlyerId,
+						'wp_flyer_id' => $newWPFlyerId,
+						'last_seen' => date('Y-m-d H:i:s'),
+						'event_start' => $ctCalEntry->getStartDate(),
+						'event_end' => $ctCalEntry->getEndDate(),
+						'ct_repeating' => $isRepeating ? 1 : 0
+						)))
+						{
+							logError("Error inserting mapping: ".$wpdb->last_error);
 					}
 				} else {
 					// Update last seen time stamp to flag as "still existing"
@@ -479,25 +466,8 @@ function processCalendarEntry(
 						$whereFormat[] = '%s';
 					}
 
-					// Retry logic for deadlock errors
-					$maxRetries = 3;
-					$retryCount = 0;
-					$updateSuccess = false;
-					while ($retryCount < $maxRetries && !$updateSuccess) {
-						$updateSuccess = $wpdb->update($wpctsync_tablename, $updateData, $whereData, $updateFormat, $whereFormat);
-						if ($updateSuccess === false && stripos($wpdb->last_error, 'Deadlock') !== false) {
-							$retryCount++;
-							logDebug("Deadlock detected on update, retry $retryCount of $maxRetries for ct_id: ".$ctCalEntry->getId());
-							usleep(100000 * $retryCount); // Wait 100ms, 200ms, 300ms
-						} else {
-							break;
-						}
-					}
-					if ($updateSuccess === false) {
-						logError("Error updating mapping for ct_id: ".$ctCalEntry->getId()." - ".$wpdb->last_error);
-					} else {
-						logDebug("Updated mapping for ct_id: " . $ctCalEntry->getId());
-					}
+					$wpdb->update($wpctsync_tablename, $updateData, $whereData, $updateFormat, $whereFormat);
+					logDebug("Updated mapping for ct_id: " . $ctCalEntry->getId());
 				}
 				// Handle event categories from resource type and CT tags
 				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment, $config->enableTagCategories);
