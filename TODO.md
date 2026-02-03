@@ -2,6 +2,10 @@
 
 This file contains identified issues and improvements from code review that should be addressed in future updates.
 
+## Completed (2026-02-04)
+- [x] Error handling for external API calls - Added try-catch for AppointmentRequest, CombinedAppointmentRequest, FileRequest
+- [x] File download error handling - Added error checking for file_get_contents calls
+
 ## Completed (2026-02-03)
 - [x] SQL Injection vulnerabilities - Fixed with prepared statements
 - [x] XSS vulnerabilities - Fixed with proper escaping
@@ -17,41 +21,7 @@ This file contains identified issues and improvements from code review that shou
 
 ## High Priority
 
-### 1. Error Handling for External API Calls
-**File:** `churchtools-dosync.php`
-**Lines:** 91-94, 255, 265
-
-**Issue:** No try-catch blocks around ChurchTools API calls:
-- `AppointmentRequest::forCalendars()`
-- `CombinedAppointmentRequest::forAppointment()`
-- `FileRequest::forEvent()`
-
-**Recommendation:**
-```php
-try {
-    $result = AppointmentRequest::forCalendars($calendars)->where(...)->get();
-} catch (\CTApi\Exceptions\CTRequestException $e) {
-    logError("Failed to fetch appointments: " . $e->getMessage());
-    return;
-}
-```
-
-### 2. File Download Error Handling
-**File:** `churchtools-dosync.php`
-**Lines:** 687, 713
-
-**Issue:** `file_get_contents($fileURL)` can fail silently
-
-**Recommendation:**
-```php
-$content = @file_get_contents($fileURL);
-if ($content === false) {
-    logError("Failed to download image from " . $fileURL);
-    return null;
-}
-```
-
-### 3. Input Validation
+### 1. Input Validation
 **File:** `includes/SyncConfig.php`
 
 **Issues:**
@@ -73,7 +43,7 @@ $import_past = max(-365, min(365, (int)$import_past));
 
 ## Medium Priority
 
-### 4. Refactor Large Function
+### 2. Refactor Large Function
 **File:** `churchtools-dosync.php`
 **Lines:** 124-514 (`processCalendarEntry` function)
 
@@ -85,7 +55,7 @@ $import_past = max(-365, min(365, (int)$import_past));
 - `processEventAttachments()`
 - `processEventCategories()`
 
-### 5. Performance: Location Lookup
+### 3. Performance: Location Lookup
 **File:** `churchtools-dosync.php`
 **Lines:** 535-550
 
@@ -93,7 +63,7 @@ $import_past = max(-365, min(365, (int)$import_past));
 
 **Recommendation:** Use database query with proper parameters or implement caching
 
-### 6. Performance: N+1 Query in Category Sync
+### 4. Performance: N+1 Query in Category Sync
 **File:** `churchtools-dosync.php`
 **Lines:** 636-659
 
@@ -101,7 +71,7 @@ $import_past = max(-365, min(365, (int)$import_past));
 
 **Recommendation:** Batch fetch categories at start of sync
 
-### 7. Hardcoded German String
+### 5. Hardcoded German String
 **File:** `churchtools-dosync.php`
 **Line:** 808
 
@@ -115,7 +85,7 @@ $invalidRightsHeader = "Keine ausreichende Berechtigung";
 $invalidRightsHeader = __("Insufficient permissions", "ctwpsync");
 ```
 
-### 8. DateTime Validation
+### 6. DateTime Validation
 **File:** `churchtools-dosync.php`
 **Lines:** 250-252, 305-306
 
@@ -130,7 +100,7 @@ if (!$sDate) {
 }
 ```
 
-### 9. Session Destruction
+### 7. Session Destruction
 **File:** `churchtools-dosync.php`
 **Line:** 112
 
@@ -142,7 +112,7 @@ if (!$sDate) {
 
 ## Low Priority
 
-### 10. Code Style Consistency
+### 8. Code Style Consistency
 **File:** `churchtools-dosync.php`
 
 **Issues:**
@@ -150,14 +120,14 @@ if (!$sDate) {
 - Inconsistent variable naming (camelCase vs snake_case)
 - Inconsistent brace placement
 
-### 11. Logging Improvements
+### 9. Logging Improvements
 **File:** `churchtools-dosync.php`
 
 **Issue:** Using `serialize()` in logs is hard to read
 
 **Recommendation:** Use structured logging with proper formatting
 
-### 12. Documentation
+### 10. Documentation
 **Files:** Multiple
 
 **Issue:** Some functions lack proper PHPDoc blocks

@@ -1,5 +1,13 @@
 # churchtools-wp-calendarsync changelog
 
+## 2026-02-04
+- **Improved error handling**
+  - Added try-catch for ChurchTools API calls (AppointmentRequest, CombinedAppointmentRequest, FileRequest)
+  - Added error checking for file_get_contents when downloading images
+  - Better error messages for failed event saves including event name and EM errors
+- **Bug fix**
+  - Fixed ResourceTypeRequest namespace to use correct path from upstream library
+
 ## 2026-02-03
 - **Security fixes**
   - Fixed SQL injection vulnerabilities - all queries now use proper prepared statements

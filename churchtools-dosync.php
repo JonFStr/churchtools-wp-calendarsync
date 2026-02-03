@@ -94,10 +94,18 @@ try {
     
     $api = new CTClient();
     logInfo("Searching calendar entries from {$fromDate} until {$toDate} in calendars [" . implode(",", $calendars) . "]");
-    $result = AppointmentRequest::forCalendars($calendars)
-        ->where('from', $fromDate)
-        ->where('to', $toDate)
-        ->get();
+    try {
+        $result = AppointmentRequest::forCalendars($calendars)
+            ->where('from', $fromDate)
+            ->where('to', $toDate)
+            ->get();
+    } catch (\CTApi\Exceptions\CTRequestException $e) {
+        logError("Failed to fetch appointments from ChurchTools: " . $e->getMessage());
+        throw $e;
+    } catch (\CTApi\Exceptions\CTConnectException $e) {
+        logError("Connection to ChurchTools failed: " . $e->getMessage());
+        throw $e;
+    }
     foreach ($result as $key => $ctCalEntry) {
         processCalendarEntry($ctCalEntry, $calendars_categories_mapping, $resourcetype_for_categories, $config);
     }
@@ -272,7 +280,12 @@ function processCalendarEntry(
 				$sDate= \DateTime::createFromFormat('Y-m-d\TH:i:s+', $ctCalEntry->getStartDate(), new DateTimeZone('UTC'));
 			}
 			// Look into event and resources
-			$combinedAppointment= CombinedAppointmentRequest::forAppointment($ctCalEntry->getCalendar()->getId(), $ctCalEntry->getId(), $sDate->format('Y-m-d'))->get();
+			$combinedAppointment = null;
+			try {
+				$combinedAppointment = CombinedAppointmentRequest::forAppointment($ctCalEntry->getCalendar()->getId(), $ctCalEntry->getId(), $sDate->format('Y-m-d'))->get();
+			} catch (\CTApi\Exceptions\CTRequestException $e) {
+				logError("Failed to fetch combined appointment for ct_id " . $ctCalEntry->getId() . ": " . $e->getMessage());
+			}
 			if ($combinedAppointment != null) {
 				logDebug("Found combined appointment");
 				$ctEvent= $combinedAppointment->getEvent();
@@ -282,7 +295,12 @@ function processCalendarEntry(
 					$eventId= $ctEvent->getId();
 					if ($eventId != null ){
 						logDebug("Found ct event with ID ".$eventId);
-						$eventFiles= FileRequest::forEvent($eventId)->get();
+						$eventFiles = null;
+						try {
+							$eventFiles = FileRequest::forEvent($eventId)->get();
+						} catch (\CTApi\Exceptions\CTRequestException $e) {
+							logError("Failed to fetch files for event " . $eventId . ": " . $e->getMessage());
+						}
 						if ($eventFiles != null) {
 							foreach ($eventFiles as $ctFile) {
 								if ($ctFile->getName() != null && str_contains(strtolower($ctFile->getName()), "flyer")) {
@@ -734,8 +752,13 @@ function downloadEventImage(string $fileURL, string $fileName, int $postID, \Dat
 	} else {
 		logDebug("File not existing: ".$fullFilename);
 	}
-	
-    $upload_file = wp_upload_bits( $fileName, null, file_get_contents($fileURL) , $uploadPart);
+
+	$fileContent = @file_get_contents($fileURL);
+	if ($fileContent === false) {
+		logError("Failed to download image from " . $fileURL);
+		return null;
+	}
+    $upload_file = wp_upload_bits( $fileName, null, $fileContent, $uploadPart);
     if ( ! $upload_file['error'] ) {
 	  logDebug("Result of fileupload :".serialize($upload_file));
       // if succesfull insert the new file into the media library (create a new attachment post type).
@@ -823,8 +846,12 @@ function uploadFromLocalFile(
 	require_once( ABSPATH . "/wp-admin/includes/media.php");
 	
     
-    $invalidRightsHeader= "Keine ausreichende Berechtigung"; // File starts with this content when rights are missing
-    $fileContent = file_get_contents($tmpFile, false, null, 0, 64);
+    $invalidRightsHeader = "Keine ausreichende Berechtigung"; // File starts with this content when rights are missing
+    $fileContent = @file_get_contents($tmpFile, false, null, 0, 64);
+    if ($fileContent === false) {
+        logError("Failed to read local file: " . $tmpFile);
+        return false;
+    }
     if (str_starts_with($fileContent, $invalidRightsHeader)) {
         logError("Not enough rights to access file ".$tmpFile);
         // wp_delete_file($tmpFile);
