@@ -436,8 +436,8 @@ function processCalendarEntry(
 					$wpdb->query($wpdb->prepare($sql));
 					logDebug(serialize($sql));
 				}
-				// Handle event categories from resource type
-				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment);
+				// Handle event categories from resource type and CT tags
+				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment, $config->enableTagCategories);
 			} else {
 				logError("Saving new event failed for ct id: ".$ctCalEntry->getId() );
 			}
@@ -539,13 +539,15 @@ function getCreateLocation(?Address $appointmentAddress): ?int {
  * @param Appointment $ctCalEntry ChurchTools calendar entry
  * @param EM_Event $event Events Manager event
  * @param CombinedAppointment|null $combinedAppointment Combined appointment with bookings
+ * @param bool $enableTagCategories Whether to sync CT appointment tags as categories
  */
 function updateEventCategories(
     array $calendars_categories_mapping,
     int $resourcetype_for_categories,
     Appointment $ctCalEntry,
     EM_Event $event,
-    ?CombinedAppointment $combinedAppointment
+    ?CombinedAppointment $combinedAppointment,
+    bool $enableTagCategories = false
 ): void {
 
 	$desiredCategories= [];
@@ -574,6 +576,22 @@ function updateEventCategories(
             }
         }
 	}
+
+    // Add categories from ChurchTools appointment tags
+    if ($enableTagCategories) {
+        $ctTags = $ctCalEntry->getTags();
+        if (!empty($ctTags)) {
+            foreach ($ctTags as $ctTag) {
+                $tagName = $ctTag->getName();
+                if (!empty($tagName)) {
+                    logDebug("Adding category from CT tag: " . $tagName);
+                    array_push($desiredCategories, $tagName);
+                }
+            }
+        } else {
+            logDebug("No tags found for appointment " . $ctCalEntry->getId());
+        }
+    }
 	if (sizeof($desiredCategories) > 0) {
 		$wpDesiredCategories= [];
 		foreach ($desiredCategories as $dcKey => $desiredCategory) {

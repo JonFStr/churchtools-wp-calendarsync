@@ -21,6 +21,10 @@
 		<br>Name of a custom attribute in Events Manager. When set, this plugin will not download event images, but directly embed them from ChurchTools.<br>
         Must be defined in the <a href="https://wp-events-plugin.com/documentation/event-attributes/#enablingactivating">Events Manager settings</a><br>
 		<input type="text" size="30" name="ctwpsync_em_image_attr" id="ctwpsync_em_image_attr" class="text_box" placeholder="disabled" value="<?php echo $saved_data ? $saved_data['em_image_attr'] : '' ; ?>">
+		<br><br>
+		<input type="checkbox" name="ctwpsync_enable_tag_categories" id="ctwpsync_enable_tag_categories" <?php echo ($saved_data && !empty($saved_data['enable_tag_categories'])) ? 'checked' : ''; ?>>
+		<label for="ctwpsync_enable_tag_categories">Sync ChurchTools appointment tags as event categories</label>
+		<br><br>
 		<input type="submit" value="Save">
 		<p><strong>Last updated:</strong> <?php echo $lastupdated; ?></p>
 		<p><strong>Sync duration:</strong> <?php echo $lastsyncduration; ?></p>

@@ -1,5 +1,12 @@
 # churchtools-wp-calendarsync changelog
 
+## 2026-02-03
+- **Add ChurchTools appointment tag support**
+  - New option to sync ChurchTools appointment tags as WordPress event categories
+  - Tags are added alongside existing category sources (calendar mapping, resource bookings)
+  - Enable via checkbox in plugin settings: "Sync ChurchTools appointment tags as event categories"
+  - Requires churchtools-api library with appointment-tag-support branch
+
 ## 2025-12-06
 - Prepare php 8.2+ only support
 

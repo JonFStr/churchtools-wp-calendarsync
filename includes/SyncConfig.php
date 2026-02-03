@@ -32,6 +32,7 @@ readonly class SyncConfig {
         public int $importFuture,
         public int $resourceTypeForCategories = -1,
         public string $emImageAttr = '',
+        public bool $enableTagCategories = false,
     ) {}
 
     /**
@@ -49,6 +50,7 @@ readonly class SyncConfig {
             importFuture: (int)trim($_POST['ctwpsync_import_future']),
             resourceTypeForCategories: (int)trim($_POST['ctwpsync_resourcetype_for_categories']),
             emImageAttr: trim($_POST['ctwpsync_em_image_attr']),
+            enableTagCategories: isset($_POST['ctwpsync_enable_tag_categories']),
         );
     }
 
@@ -72,6 +74,7 @@ readonly class SyncConfig {
             importFuture: $options['import_future'] ?? 380,
             resourceTypeForCategories: $options['resourcetype_for_categories'] ?? -1,
             emImageAttr: $options['em_image_attr'] ?? '',
+            enableTagCategories: $options['enable_tag_categories'] ?? false,
         );
     }
 
@@ -90,6 +93,7 @@ readonly class SyncConfig {
             'import_future' => $this->importFuture,
             'resourcetype_for_categories' => $this->resourceTypeForCategories,
             'em_image_attr' => $this->emImageAttr,
+            'enable_tag_categories' => $this->enableTagCategories,
         ];
     }
 
