@@ -317,7 +317,7 @@ function ctwpsync_validate_connection_callback(): void {
 		\CTApi\CTConfig::validateConfig();
 
 		// Try to get current user to verify connection
-		$whoami = \CTApi\Models\Common\Auth\AuthRequest::whoami();
+		$whoami = \CTApi\Models\Groups\Person\PersonRequest::whoami();
 
 		if ($whoami) {
 			$name = trim($whoami->getFirstName() . ' ' . $whoami->getLastName());
