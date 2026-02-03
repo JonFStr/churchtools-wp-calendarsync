@@ -966,7 +966,7 @@ function ctwpsync_migrate_to_em71(): ?array {
     $migration_completed = get_option('ctwpsync_em71_migration_completed');
     if ($migration_completed) {
         logDebug("Events Manager 7.1+ migration already completed, skipping");
-        return;
+        return null;
     }
 
     logInfo("Starting Events Manager 7.1+ migration for existing events");
@@ -977,7 +977,7 @@ function ctwpsync_migrate_to_em71(): ?array {
     if (!$mapped_events || count($mapped_events) == 0) {
         logInfo("No existing events found to migrate");
         update_option('ctwpsync_em71_migration_completed', true);
-        return;
+        return null;
     }
 
     $total_events = count($mapped_events);
