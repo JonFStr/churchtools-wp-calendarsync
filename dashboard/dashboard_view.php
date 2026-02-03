@@ -10,7 +10,7 @@
 		<input type="password" size="30" name="ctwpsync_apitoken" id="ctwpsync_apitoken" class="text_box" placeholder="<?php echo ($saved_data && !empty($saved_data['apitoken'])) ? '••••••••' : 'Enter API token'; ?>" value="">
 		<input type="hidden" id="ctwpsync_has_saved_token" value="<?php echo ($saved_data && !empty($saved_data['apitoken'])) ? '1' : '0'; ?>">
 		<button type="button" id="ctwpsync_validate_connection" class="button" style="margin-left: 10px;">Validate Connection</button>
-		<span id="ctwpsync_validation_result" style="margin-left: 10px;"></span>
+		<span id="ctwpsync_validation_result" style="margin-left: 10px; cursor: default;"></span>
 
 		<h3>Calendars to Sync</h3>
 		<p>Select which calendars to sync and optionally assign a category to each:</p>
@@ -166,16 +166,20 @@ jQuery(document).ready(function($) {
 			nonce: nonce
 		}, function(response) {
 			if (response.success) {
-				$('#ctwpsync_validation_result').html('<span style="color:green;">&#10003; ' + response.data + ' - Saving...</span>');
+				$('#ctwpsync_validation_result').html('<span style="color:green;">&#10003; ' + escapeHtml(response.data) + ' - Saving...</span>');
 				// Validation passed, submit the form
 				$('form.ctwpsync_settings').off('submit').submit();
 			} else {
-				$('#ctwpsync_validation_result').html('<span style="color:red;">&#10007; ' + response.data + ' - Save cancelled</span>');
+				var errorMsg = response.data || 'Unknown error';
+				$('#ctwpsync_validation_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorMsg) + '">&#10007; Validation failed - Save cancelled (hover for details)</span>');
 				$('input[type="submit"]').prop('disabled', false);
+				console.error('[ChurchTools Sync] Validation failed during save:', errorMsg);
 			}
-		}).fail(function() {
-			$('#ctwpsync_validation_result').html('<span style="color:red;">&#10007; Validation request failed - Save cancelled</span>');
+		}).fail(function(jqXHR, textStatus, errorThrown) {
+			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
+			$('#ctwpsync_validation_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorDetail) + '">&#10007; Validation request failed - Save cancelled (hover for details)</span>');
 			$('input[type="submit"]').prop('disabled', false);
+			console.error('[ChurchTools Sync] Validation request failed during save:', errorDetail);
 		});
 	});
 
@@ -184,7 +188,7 @@ jQuery(document).ready(function($) {
 		var token = $('#ctwpsync_apitoken').val();
 
 		if (!url || !token) {
-			$('#ctwpsync_validation_result').html('<span style="color:red;">Please enter URL and API token first</span>');
+			$('#ctwpsync_validation_result').html('<span style="color:red;" title="Both URL and API token are required to test the connection">Please enter URL and API token first</span>');
 			return;
 		}
 
@@ -199,13 +203,17 @@ jQuery(document).ready(function($) {
 		}, function(response) {
 			$('#ctwpsync_validate_connection').prop('disabled', false);
 			if (response.success) {
-				$('#ctwpsync_validation_result').html('<span style="color:green;">&#10003; ' + response.data + '</span>');
+				$('#ctwpsync_validation_result').html('<span style="color:green;" title="' + escapeHtml(response.data) + '">&#10003; ' + escapeHtml(response.data) + '</span>');
 			} else {
-				$('#ctwpsync_validation_result').html('<span style="color:red;">&#10007; ' + response.data + '</span>');
+				var errorMsg = response.data || 'Unknown error';
+				$('#ctwpsync_validation_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorMsg) + '">&#10007; Connection failed (hover for details)</span>');
+				console.error('[ChurchTools Sync] Connection test failed:', errorMsg);
 			}
-		}).fail(function() {
+		}).fail(function(jqXHR, textStatus, errorThrown) {
 			$('#ctwpsync_validate_connection').prop('disabled', false);
-			$('#ctwpsync_validation_result').html('<span style="color:red;">&#10007; Request failed</span>');
+			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
+			$('#ctwpsync_validation_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorDetail) + '">&#10007; Request failed (hover for details)</span>');
+			console.error('[ChurchTools Sync] Connection test request failed:', errorDetail);
 		});
 	}
 
@@ -230,11 +238,15 @@ jQuery(document).ready(function($) {
 			if (response.success) {
 				renderCalendarTable(response.data);
 			} else {
-				alert('Failed to load calendars: ' + response.data);
+				var errorMsg = response.data || 'Unknown error';
+				alert('Failed to load calendars: ' + errorMsg);
+				console.error('[ChurchTools Sync] Failed to load calendars:', errorMsg);
 			}
-		}).fail(function() {
+		}).fail(function(jqXHR, textStatus, errorThrown) {
 			$('#ctwpsync_load_calendars').prop('disabled', false).text('Load Calendars from ChurchTools');
-			alert('Request failed');
+			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
+			alert('Request failed: ' + errorDetail);
+			console.error('[ChurchTools Sync] Calendar load request failed:', errorDetail);
 		});
 	}
 
@@ -332,11 +344,15 @@ jQuery(document).ready(function($) {
 				$('#ctwpsync_resourcetype_for_categories').html(html);
 				$('#ctwpsync_resource_types_result').html('<span style="color:green;">&#10003; Loaded ' + response.data.length + ' resource types</span>');
 			} else {
-				$('#ctwpsync_resource_types_result').html('<span style="color:red;">&#10007; ' + response.data + '</span>');
+				var errorMsg = response.data || 'Unknown error';
+				$('#ctwpsync_resource_types_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorMsg) + '">&#10007; Failed (hover for details)</span>');
+				console.error('[ChurchTools Sync] Failed to load resource types:', errorMsg);
 			}
-		}).fail(function() {
+		}).fail(function(jqXHR, textStatus, errorThrown) {
 			$('#ctwpsync_load_resource_types').prop('disabled', false).text('Load Resource Types');
-			$('#ctwpsync_resource_types_result').html('<span style="color:red;">&#10007; Request failed</span>');
+			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
+			$('#ctwpsync_resource_types_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorDetail) + '">&#10007; Request failed (hover for details)</span>');
+			console.error('[ChurchTools Sync] Resource types load request failed:', errorDetail);
 		});
 	}
 

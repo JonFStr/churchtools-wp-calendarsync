@@ -290,11 +290,13 @@ add_action('wp_ajax_ctwpsync_validate_connection', 'ctwpsync_validate_connection
 function ctwpsync_validate_connection_callback(): void {
 	// Verify nonce for security
 	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		error_log('[ChurchTools Sync] Connection test failed: Security check failed (invalid nonce)');
 		wp_send_json_error('Security check failed');
 	}
 
 	// Check user permissions
 	if (!current_user_can('manage_options')) {
+		error_log('[ChurchTools Sync] Connection test failed: Permission denied for user ' . get_current_user_id());
 		wp_send_json_error('Permission denied');
 	}
 
@@ -302,8 +304,11 @@ function ctwpsync_validate_connection_callback(): void {
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
 
 	if (empty($url) || empty($token)) {
+		error_log('[ChurchTools Sync] Connection test failed: URL or API token missing');
 		wp_send_json_error('URL and API token are required');
 	}
+
+	error_log('[ChurchTools Sync] Testing connection to: ' . $url);
 
 	// Load autoloader if needed
 	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
@@ -321,12 +326,18 @@ function ctwpsync_validate_connection_callback(): void {
 
 		if ($whoami) {
 			$name = trim($whoami->getFirstName() . ' ' . $whoami->getLastName());
+			error_log('[ChurchTools Sync] Connection test successful: Connected as ' . $name);
 			wp_send_json_success('Connected as: ' . $name);
 		} else {
+			error_log('[ChurchTools Sync] Connection test warning: Connected but could not retrieve user info');
 			wp_send_json_error('Connection successful but could not retrieve user info');
 		}
 	} catch (\Exception $e) {
-		wp_send_json_error('Connection failed: ' . $e->getMessage());
+		$errorMessage = $e->getMessage();
+		$errorClass = get_class($e);
+		error_log("[ChurchTools Sync] Connection test failed: [{$errorClass}] {$errorMessage}");
+		error_log("[ChurchTools Sync] Stack trace: " . $e->getTraceAsString());
+		wp_send_json_error('Connection failed: ' . $errorMessage);
 	}
 }
 
@@ -341,11 +352,13 @@ add_action('wp_ajax_ctwpsync_get_calendars', 'ctwpsync_get_calendars_callback');
 function ctwpsync_get_calendars_callback(): void {
 	// Verify nonce for security
 	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		error_log('[ChurchTools Sync] Calendar fetch failed: Security check failed (invalid nonce)');
 		wp_send_json_error('Security check failed');
 	}
 
 	// Check user permissions
 	if (!current_user_can('manage_options')) {
+		error_log('[ChurchTools Sync] Calendar fetch failed: Permission denied for user ' . get_current_user_id());
 		wp_send_json_error('Permission denied');
 	}
 
@@ -353,8 +366,11 @@ function ctwpsync_get_calendars_callback(): void {
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
 
 	if (empty($url) || empty($token)) {
+		error_log('[ChurchTools Sync] Calendar fetch failed: URL or API token missing');
 		wp_send_json_error('URL and API token are required');
 	}
+
+	error_log('[ChurchTools Sync] Fetching calendars from: ' . $url);
 
 	// Load autoloader if needed
 	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
@@ -377,9 +393,13 @@ function ctwpsync_get_calendars_callback(): void {
 			];
 		}
 
+		error_log('[ChurchTools Sync] Successfully fetched ' . count($result) . ' calendars');
 		wp_send_json_success($result);
 	} catch (\Exception $e) {
-		wp_send_json_error('Failed to fetch calendars: ' . $e->getMessage());
+		$errorMessage = $e->getMessage();
+		$errorClass = get_class($e);
+		error_log("[ChurchTools Sync] Calendar fetch failed: [{$errorClass}] {$errorMessage}");
+		wp_send_json_error('Failed to fetch calendars: ' . $errorMessage);
 	}
 }
 
@@ -394,11 +414,13 @@ add_action('wp_ajax_ctwpsync_get_resource_types', 'ctwpsync_get_resource_types_c
 function ctwpsync_get_resource_types_callback(): void {
 	// Verify nonce for security
 	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		error_log('[ChurchTools Sync] Resource types fetch failed: Security check failed (invalid nonce)');
 		wp_send_json_error('Security check failed');
 	}
 
 	// Check user permissions
 	if (!current_user_can('manage_options')) {
+		error_log('[ChurchTools Sync] Resource types fetch failed: Permission denied for user ' . get_current_user_id());
 		wp_send_json_error('Permission denied');
 	}
 
@@ -406,8 +428,11 @@ function ctwpsync_get_resource_types_callback(): void {
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
 
 	if (empty($url) || empty($token)) {
+		error_log('[ChurchTools Sync] Resource types fetch failed: URL or API token missing');
 		wp_send_json_error('URL and API token are required');
 	}
+
+	error_log('[ChurchTools Sync] Fetching resource types from: ' . $url);
 
 	// Load autoloader if needed
 	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
@@ -430,9 +455,13 @@ function ctwpsync_get_resource_types_callback(): void {
 			];
 		}
 
+		error_log('[ChurchTools Sync] Successfully fetched ' . count($result) . ' resource types');
 		wp_send_json_success($result);
 	} catch (\Exception $e) {
-		wp_send_json_error('Failed to fetch resource types: ' . $e->getMessage());
+		$errorMessage = $e->getMessage();
+		$errorClass = get_class($e);
+		error_log("[ChurchTools Sync] Resource types fetch failed: [{$errorClass}] {$errorMessage}");
+		wp_send_json_error('Failed to fetch resource types: ' . $errorMessage);
 	}
 }
 
