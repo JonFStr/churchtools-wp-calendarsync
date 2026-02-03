@@ -265,6 +265,56 @@ function ctwpsync_override_event_image(string $em_image_url, $em_event): string 
 
 add_filter( 'em_object_get_image_url', 'ctwpsync_override_event_image', 10, 2 );
 
+/**
+ * Register AJAX action for connection validation
+ */
+add_action('wp_ajax_ctwpsync_validate_connection', 'ctwpsync_validate_connection_callback');
+
+/**
+ * AJAX callback to validate ChurchTools connection
+ */
+function ctwpsync_validate_connection_callback(): void {
+	// Verify nonce for security
+	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		wp_send_json_error('Security check failed');
+	}
+
+	// Check user permissions
+	if (!current_user_can('manage_options')) {
+		wp_send_json_error('Permission denied');
+	}
+
+	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
+	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+
+	if (empty($url) || empty($token)) {
+		wp_send_json_error('URL and API token are required');
+	}
+
+	// Load autoloader if needed
+	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
+		require_once __DIR__ . '/vendor/autoload.php';
+	}
+
+	try {
+		// Configure ChurchTools API
+		\CTApi\CTConfig::setApiURL($url);
+		\CTApi\CTConfig::setApiKey($token);
+		\CTApi\CTConfig::validateConfig();
+
+		// Try to get current user to verify connection
+		$whoami = \CTApi\Models\Common\Auth\AuthRequest::whoami();
+
+		if ($whoami) {
+			$name = trim($whoami->getFirstName() . ' ' . $whoami->getLastName());
+			wp_send_json_success('Connected as: ' . $name);
+		} else {
+			wp_send_json_error('Connection successful but could not retrieve user info');
+		}
+	} catch (\Exception $e) {
+		wp_send_json_error('Connection failed: ' . $e->getMessage());
+	}
+}
 
 //function ctwpsync_cron_schedules($schedules){
 //    if(!isset($schedules["5min"])){

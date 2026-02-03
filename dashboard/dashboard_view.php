@@ -6,7 +6,9 @@
 		<br>ChurchTools-URL (Including https://)<br>
 		<input type="text" size="30" name="ctwpsync_url" id="ctwpsync_url" class="text_box" placeholder="https://yourchurch.church.tools/" value="<?php echo $saved_data ? $saved_data['url'] : '' ; ?>" required> 
 		<br>ChurchTools API token<br>
-		<input type="password" size="30" name="ctwpsync_apitoken" id="ctwpsync_apitoken" class="text_box" placeholder="my login token" value="<?php echo $saved_data ? $saved_data['apitoken'] : '' ; ?>"> 
+		<input type="password" size="30" name="ctwpsync_apitoken" id="ctwpsync_apitoken" class="text_box" placeholder="my login token" value="<?php echo $saved_data ? $saved_data['apitoken'] : '' ; ?>">
+		<button type="button" id="ctwpsync_validate_connection" class="button" style="margin-left: 10px;">Validate Connection</button>
+		<span id="ctwpsync_validation_result" style="margin-left: 10px;"></span>
 		<br>Calendar IDs (for example 2,32,62,70,78,79)<br>
 		<input type="text" size="30" name="ctwpsync_ids" id="ctwpsync_ids" class="text_box" placeholder="42,43,52" value="<?php echo ($saved_data && array_key_exists('ids', $saved_data)) ? implode(', ',$saved_data['ids']) : '' ; ?>" required> 
 		<br>Calendar Categories (for example Gottesdienste,Musik,Romands,,,Kinder)<br>
@@ -45,3 +47,37 @@
 	}
 	?>
 </div>
+
+<script>
+jQuery(document).ready(function($) {
+	$('#ctwpsync_validate_connection').click(function() {
+		var url = $('#ctwpsync_url').val();
+		var token = $('#ctwpsync_apitoken').val();
+
+		if (!url || !token) {
+			$('#ctwpsync_validation_result').html('<span style="color:red;">Please enter URL and API token first</span>');
+			return;
+		}
+
+		$('#ctwpsync_validation_result').html('<span style="color:blue;">Checking...</span>');
+		$('#ctwpsync_validate_connection').prop('disabled', true);
+
+		$.post(ajaxurl, {
+			action: 'ctwpsync_validate_connection',
+			url: url,
+			token: token,
+			nonce: '<?php echo wp_create_nonce("ctwpsync_validate"); ?>'
+		}, function(response) {
+			$('#ctwpsync_validate_connection').prop('disabled', false);
+			if (response.success) {
+				$('#ctwpsync_validation_result').html('<span style="color:green;">\u2713 ' + response.data + '</span>');
+			} else {
+				$('#ctwpsync_validation_result').html('<span style="color:red;">\u2717 ' + response.data + '</span>');
+			}
+		}).fail(function() {
+			$('#ctwpsync_validate_connection').prop('disabled', false);
+			$('#ctwpsync_validation_result').html('<span style="color:red;">\u2717 Request failed</span>');
+		});
+	});
+});
+</script>
