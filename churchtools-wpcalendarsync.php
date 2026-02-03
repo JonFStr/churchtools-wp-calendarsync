@@ -455,7 +455,7 @@ function ctwpsync_get_resource_types_callback(): void {
 		foreach ($resourceTypes as $rt) {
 			$result[] = [
 				'id' => $rt->getId(),
-				'name' => $rt->getName(),
+				'name' => $rt->getNameTranslated() ?? $rt->getName(),
 			];
 		}
 
