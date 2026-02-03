@@ -8,6 +8,10 @@ This file contains identified issues and improvements from code review that shou
 - [x] CSRF protection - Added nonce verification
 - [x] API token exposure - Token no longer in HTML source
 - [x] Capability checks - Added manage_options check
+- [x] Connection testing error logging - Added error_log() calls to AJAX callbacks with [ChurchTools Sync] prefix
+- [x] UI error tooltips - Error indicators now show detailed messages on hover
+- [x] PHP 8.2 return type fixes - Fixed nullable return type violations in migration functions
+- [x] Options validation - Added check for false/non-array options before SyncConfig::fromOptions()
 
 ---
 
