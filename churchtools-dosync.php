@@ -72,7 +72,11 @@ try {
     CTConfig::validateConfig();
 
     // Get calendar and category mappings from config
-    $calendars = $config->calendarIds;
+    $calendars = $config->getCalendarIds();
+    if (empty($calendars)) {
+        logError("No calendars configured, doing nothing");
+        return;
+    }
     $calendars_categories_mapping = $config->getCategoryMapping();
 
     logDebug("Categories mapping via calendar ID's: " . json_encode($calendars_categories_mapping));

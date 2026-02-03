@@ -10,6 +10,13 @@
   - New "Validate Connection" button in settings to test ChurchTools URL and API token
   - Shows connected user name on success or error message on failure
   - Settings are automatically validated before saving - invalid credentials prevent save
+- **Improved settings UI with dynamic calendar and resource type selection**
+  - "Load Calendars from ChurchTools" button fetches available calendars
+  - Select calendars via checkboxes instead of entering IDs manually
+  - Assign categories per calendar in a table view
+  - "Load Resource Types" button populates dropdown for resource type selection
+  - Automatic migration of existing settings from old format to new format
+  - Safety checks for empty/missing credentials and calendar configurations
 
 ## 2025-12-06
 - Prepare php 8.2+ only support

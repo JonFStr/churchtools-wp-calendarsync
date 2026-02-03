@@ -16,18 +16,17 @@ readonly class SyncConfig {
      *
      * @param string $url ChurchTools URL
      * @param string $apiToken API authentication token
-     * @param array $calendarIds Array of calendar IDs to sync
-     * @param array $categories Categories mapped to calendar IDs
+     * @param array $calendars Array of calendar configurations [{id: int, name: string, category: string}, ...]
      * @param int $importPast Days in the past to import
      * @param int $importFuture Days in the future to import
      * @param int $resourceTypeForCategories Resource type ID for category mapping (-1 to disable)
      * @param string $emImageAttr Events Manager custom attribute for image URLs (empty to disable)
+     * @param bool $enableTagCategories Whether to sync CT appointment tags as categories
      */
     public function __construct(
         public string $url,
         public string $apiToken,
-        public array $calendarIds,
-        public array $categories,
+        public array $calendars,
         public int $importPast,
         public int $importFuture,
         public int $resourceTypeForCategories = -1,
@@ -44,8 +43,7 @@ readonly class SyncConfig {
         return new self(
             url: rtrim(trim($_POST['ctwpsync_url']), '/') . '/',
             apiToken: trim($_POST['ctwpsync_apitoken']),
-            calendarIds: self::parseCalendarIds($_POST['ctwpsync_ids']),
-            categories: self::parseCategories($_POST['ctwpsync_ids_categories']),
+            calendars: self::parseCalendarsFromPost(),
             importPast: (int)trim($_POST['ctwpsync_import_past']),
             importFuture: (int)trim($_POST['ctwpsync_import_future']),
             resourceTypeForCategories: (int)trim($_POST['ctwpsync_resourcetype_for_categories']),
@@ -68,8 +66,7 @@ readonly class SyncConfig {
         return new self(
             url: $options['url'],
             apiToken: $options['apitoken'],
-            calendarIds: $options['ids'] ?? [],
-            categories: $options['ids_categories'] ?? [],
+            calendars: $options['calendars'] ?? [],
             importPast: $options['import_past'] ?? 0,
             importFuture: $options['import_future'] ?? 380,
             resourceTypeForCategories: $options['resourcetype_for_categories'] ?? -1,
@@ -87,8 +84,7 @@ readonly class SyncConfig {
         return [
             'url' => $this->url,
             'apitoken' => $this->apiToken,
-            'ids' => $this->calendarIds,
-            'ids_categories' => $this->categories,
+            'calendars' => $this->calendars,
             'import_past' => $this->importPast,
             'import_future' => $this->importFuture,
             'resourcetype_for_categories' => $this->resourceTypeForCategories,
@@ -98,34 +94,24 @@ readonly class SyncConfig {
     }
 
     /**
-     * Parse calendar IDs from input string
+     * Parse calendars from POST data
      *
-     * @param string $ids Comma-separated calendar IDs
-     * @return array Array of integer calendar IDs
+     * @return array Array of calendar configurations
      */
-    private static function parseCalendarIds(string $ids): array {
-        $result = [];
-        foreach (preg_split('/\D/', $ids) as $id) {
-            $intId = intval($id);
-            if ($intId > 0) {
-                $result[] = $intId;
+    private static function parseCalendarsFromPost(): array {
+        $calendars = [];
+        if (isset($_POST['ctwpsync_calendars']) && is_array($_POST['ctwpsync_calendars'])) {
+            foreach ($_POST['ctwpsync_calendars'] as $calData) {
+                if (!empty($calData['id'])) {
+                    $calendars[] = [
+                        'id' => (int)$calData['id'],
+                        'name' => trim($calData['name'] ?? ''),
+                        'category' => trim($calData['category'] ?? ''),
+                    ];
+                }
             }
         }
-        return $result;
-    }
-
-    /**
-     * Parse categories from input string
-     *
-     * @param string $categories Comma-separated categories
-     * @return array Array of category strings
-     */
-    private static function parseCategories(string $categories): array {
-        $result = [];
-        foreach (preg_split('/,/', $categories) as $category) {
-            $result[] = trim($category);
-        }
-        return $result;
+        return $calendars;
     }
 
     /**
@@ -153,6 +139,15 @@ readonly class SyncConfig {
     }
 
     /**
+     * Get array of calendar IDs for sync
+     *
+     * @return array Array of integer calendar IDs
+     */
+    public function getCalendarIds(): array {
+        return array_map(fn($cal) => (int)$cal['id'], $this->calendars);
+    }
+
+    /**
      * Get calendar categories mapping array
      *
      * Maps calendar ID to category name
@@ -161,14 +156,8 @@ readonly class SyncConfig {
      */
     public function getCategoryMapping(): array {
         $mapping = [];
-        $i = 0;
-        while ($i < count($this->calendarIds)) {
-            if ($i < count($this->categories)) {
-                $mapping[$this->calendarIds[$i]] = $this->categories[$i] ?? null;
-            } else {
-                $mapping[$this->calendarIds[$i]] = null;
-            }
-            $i++;
+        foreach ($this->calendars as $cal) {
+            $mapping[(int)$cal['id']] = !empty($cal['category']) ? $cal['category'] : null;
         }
         return $mapping;
     }

@@ -316,6 +316,173 @@ function ctwpsync_validate_connection_callback(): void {
 	}
 }
 
+/**
+ * Register AJAX action for fetching calendars
+ */
+add_action('wp_ajax_ctwpsync_get_calendars', 'ctwpsync_get_calendars_callback');
+
+/**
+ * AJAX callback to fetch available calendars from ChurchTools
+ */
+function ctwpsync_get_calendars_callback(): void {
+	// Verify nonce for security
+	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		wp_send_json_error('Security check failed');
+	}
+
+	// Check user permissions
+	if (!current_user_can('manage_options')) {
+		wp_send_json_error('Permission denied');
+	}
+
+	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
+	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+
+	if (empty($url) || empty($token)) {
+		wp_send_json_error('URL and API token are required');
+	}
+
+	// Load autoloader if needed
+	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
+		require_once __DIR__ . '/vendor/autoload.php';
+	}
+
+	try {
+		// Configure ChurchTools API
+		\CTApi\CTConfig::setApiURL($url);
+		\CTApi\CTConfig::setApiKey($token);
+
+		// Fetch all calendars
+		$calendars = \CTApi\Models\Calendars\Calendar\CalendarRequest::all();
+
+		$result = [];
+		foreach ($calendars as $cal) {
+			$result[] = [
+				'id' => $cal->getId(),
+				'name' => $cal->getName(),
+			];
+		}
+
+		wp_send_json_success($result);
+	} catch (\Exception $e) {
+		wp_send_json_error('Failed to fetch calendars: ' . $e->getMessage());
+	}
+}
+
+/**
+ * Register AJAX action for fetching resource types
+ */
+add_action('wp_ajax_ctwpsync_get_resource_types', 'ctwpsync_get_resource_types_callback');
+
+/**
+ * AJAX callback to fetch available resource types from ChurchTools
+ */
+function ctwpsync_get_resource_types_callback(): void {
+	// Verify nonce for security
+	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		wp_send_json_error('Security check failed');
+	}
+
+	// Check user permissions
+	if (!current_user_can('manage_options')) {
+		wp_send_json_error('Permission denied');
+	}
+
+	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
+	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+
+	if (empty($url) || empty($token)) {
+		wp_send_json_error('URL and API token are required');
+	}
+
+	// Load autoloader if needed
+	if (is_readable(__DIR__ . '/vendor/autoload.php')) {
+		require_once __DIR__ . '/vendor/autoload.php';
+	}
+
+	try {
+		// Configure ChurchTools API
+		\CTApi\CTConfig::setApiURL($url);
+		\CTApi\CTConfig::setApiKey($token);
+
+		// Fetch all resource types
+		$resourceTypes = \CTApi\Models\Resources\ResourceType\ResourceTypeRequest::all();
+
+		$result = [];
+		foreach ($resourceTypes as $rt) {
+			$result[] = [
+				'id' => $rt->getId(),
+				'name' => $rt->getName(),
+			];
+		}
+
+		wp_send_json_success($result);
+	} catch (\Exception $e) {
+		wp_send_json_error('Failed to fetch resource types: ' . $e->getMessage());
+	}
+}
+
+/**
+ * Migrate old settings format to new format
+ * Old format: ids (array of ints), ids_categories (array of strings)
+ * New format: calendars (array of {id, name, category})
+ */
+function ctwpsync_migrate_settings(): void {
+	$migration_completed = get_option('ctwpsync_settings_migration_completed');
+	if ($migration_completed) {
+		return;
+	}
+
+	$options = get_option('ctwpsync_options');
+	if (!$options || !is_array($options)) {
+		update_option('ctwpsync_settings_migration_completed', true);
+		return;
+	}
+
+	// Check if already in new format
+	if (isset($options['calendars'])) {
+		update_option('ctwpsync_settings_migration_completed', true);
+		return;
+	}
+
+	// Check if old format exists
+	if (!isset($options['ids']) || !is_array($options['ids'])) {
+		update_option('ctwpsync_settings_migration_completed', true);
+		return;
+	}
+
+	// Migrate from old format to new format
+	$calendars = [];
+	$ids = $options['ids'];
+	$categories = $options['ids_categories'] ?? [];
+
+	for ($i = 0; $i < count($ids); $i++) {
+		$calendars[] = [
+			'id' => (int)$ids[$i],
+			'name' => '', // Name will be populated when user loads calendars
+			'category' => isset($categories[$i]) ? trim($categories[$i]) : '',
+		];
+	}
+
+	// Update to new format
+	$newOptions = [
+		'url' => $options['url'] ?? '',
+		'apitoken' => $options['apitoken'] ?? '',
+		'calendars' => $calendars,
+		'import_past' => $options['import_past'] ?? 0,
+		'import_future' => $options['import_future'] ?? 380,
+		'resourcetype_for_categories' => $options['resourcetype_for_categories'] ?? -1,
+		'em_image_attr' => $options['em_image_attr'] ?? '',
+		'enable_tag_categories' => $options['enable_tag_categories'] ?? false,
+	];
+
+	update_option('ctwpsync_options', $newOptions);
+	update_option('ctwpsync_settings_migration_completed', true);
+}
+
+// Run migration on plugin load
+add_action('plugins_loaded', 'ctwpsync_migrate_settings', 5); // Priority 5 to run before initplugin
+
 //function ctwpsync_cron_schedules($schedules){
 //    if(!isset($schedules["5min"])){
 //        $schedules["5min"] = array(
