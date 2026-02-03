@@ -3,10 +3,12 @@
 	<div>Just modify the fields below:</div>
 	<div>
 		<form method="post" class="ctwpsync_settings" action="" data-action="save_ctwpsync_settings">
+		<?php wp_nonce_field('ctwpsync_settings_save', 'ctwpsync_nonce'); ?>
 		<br>ChurchTools-URL (Including https://)<br>
-		<input type="text" size="30" name="ctwpsync_url" id="ctwpsync_url" class="text_box" placeholder="https://yourchurch.church.tools/" value="<?php echo $saved_data ? $saved_data['url'] : '' ; ?>" required>
-		<br>ChurchTools API token<br>
-		<input type="password" size="30" name="ctwpsync_apitoken" id="ctwpsync_apitoken" class="text_box" placeholder="my login token" value="<?php echo $saved_data ? $saved_data['apitoken'] : '' ; ?>">
+		<input type="text" size="30" name="ctwpsync_url" id="ctwpsync_url" class="text_box" placeholder="https://yourchurch.church.tools/" value="<?php echo esc_attr($saved_data['url'] ?? ''); ?>" required>
+		<br>ChurchTools API token<?php echo ($saved_data && !empty($saved_data['apitoken'])) ? ' (saved - leave empty to keep)' : ''; ?><br>
+		<input type="password" size="30" name="ctwpsync_apitoken" id="ctwpsync_apitoken" class="text_box" placeholder="<?php echo ($saved_data && !empty($saved_data['apitoken'])) ? '••••••••' : 'Enter API token'; ?>" value="">
+		<input type="hidden" id="ctwpsync_has_saved_token" value="<?php echo ($saved_data && !empty($saved_data['apitoken'])) ? '1' : '0'; ?>">
 		<button type="button" id="ctwpsync_validate_connection" class="button" style="margin-left: 10px;">Validate Connection</button>
 		<span id="ctwpsync_validation_result" style="margin-left: 10px;"></span>
 
@@ -46,9 +48,9 @@
 
 		<h3>Sync Settings</h3>
 		<br>Calendar sync past days<br>
-		<input type="text" size="30" name="ctwpsync_import_past" id="ctwpsync_import_past" class="text_box" placeholder="0" value="<?php echo $saved_data ? $saved_data['import_past'] : '' ; ?>" required>
+		<input type="text" size="30" name="ctwpsync_import_past" id="ctwpsync_import_past" class="text_box" placeholder="0" value="<?php echo esc_attr($saved_data['import_past'] ?? ''); ?>" required>
 		<br>Calendar sync future days<br>
-		<input type="text" size="30" name="ctwpsync_import_future" id="ctwpsync_import_future" class="text_box" placeholder="380" value="<?php echo $saved_data ? $saved_data['import_future'] : '' ; ?>" required>
+		<input type="text" size="30" name="ctwpsync_import_future" id="ctwpsync_import_future" class="text_box" placeholder="380" value="<?php echo esc_attr($saved_data['import_future'] ?? ''); ?>" required>
 
 		<h3>Category Options</h3>
 		<br>Resource type for categories:<br>
@@ -70,12 +72,12 @@
 		<h3>Image Settings</h3>
 		<br>Name of a custom attribute in Events Manager. When set, this plugin will not download event images, but directly embed them from ChurchTools.<br>
 		Must be defined in the <a href="https://wp-events-plugin.com/documentation/event-attributes/#enablingactivating">Events Manager settings</a><br>
-		<input type="text" size="30" name="ctwpsync_em_image_attr" id="ctwpsync_em_image_attr" class="text_box" placeholder="disabled" value="<?php echo $saved_data ? $saved_data['em_image_attr'] : '' ; ?>">
+		<input type="text" size="30" name="ctwpsync_em_image_attr" id="ctwpsync_em_image_attr" class="text_box" placeholder="disabled" value="<?php echo esc_attr($saved_data['em_image_attr'] ?? ''); ?>">
 
 		<br><br>
 		<input type="submit" value="Save" class="button button-primary">
-		<p><strong>Last updated:</strong> <?php echo $lastupdated; ?></p>
-		<p><strong>Sync duration:</strong> <?php echo $lastsyncduration; ?></p>
+		<p><strong>Last updated:</strong> <?php echo esc_html($lastupdated ?: 'Never'); ?></p>
+		<p><strong>Sync duration:</strong> <?php echo esc_html($lastsyncduration ?: 'N/A'); ?></p>
 	</div>
 
 	<hr>
@@ -117,10 +119,30 @@ jQuery(document).ready(function($) {
 	$('form.ctwpsync_settings').submit(function(e) {
 		var url = $('#ctwpsync_url').val();
 		var token = $('#ctwpsync_apitoken').val();
+		var hasSavedToken = $('#ctwpsync_has_saved_token').val() === '1';
 
-		// If URL or token is empty, let HTML5 validation handle it
-		if (!url || !token) {
+		// If URL is empty, let HTML5 validation handle it
+		if (!url) {
 			return true;
+		}
+
+		// If token is empty but we have a saved token, skip validation and allow save
+		if (!token && hasSavedToken) {
+			// Warn if no calendars are selected (but allow saving)
+			if ($('input[name^="ctwpsync_calendars"]').length === 0 && $('[name^="ctwpsync_calendars"]').length === 0) {
+				if (!confirm('No calendars selected. The sync will not work without calendars. Save anyway?')) {
+					e.preventDefault();
+					return false;
+				}
+			}
+			return true; // Allow save with existing token
+		}
+
+		// If no token and no saved token, require token
+		if (!token && !hasSavedToken) {
+			$('#ctwpsync_validation_result').html('<span style="color:red;">API token is required</span>');
+			e.preventDefault();
+			return false;
 		}
 
 		// Warn if no calendars are selected (but allow saving)

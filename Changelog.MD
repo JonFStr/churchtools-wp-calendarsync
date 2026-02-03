@@ -1,6 +1,12 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-03
+- **Security fixes**
+  - Fixed SQL injection vulnerabilities - all queries now use proper prepared statements
+  - Fixed XSS vulnerabilities - all output now properly escaped with esc_attr/esc_html
+  - Added CSRF protection with wp_nonce_field verification on form submission
+  - API token no longer exposed in HTML source - kept server-side only
+  - Added capability checks before saving settings
 - **Add ChurchTools appointment tag support**
   - New option to sync ChurchTools appointment tags as WordPress event categories
   - Tags are added alongside existing category sources (calendar mapping, resource bookings)

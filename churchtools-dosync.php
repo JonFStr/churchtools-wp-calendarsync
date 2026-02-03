@@ -173,9 +173,16 @@ function processCalendarEntry(
 						// Is deleted
 						logInfo("Event is in wp trash, removing from mapping ct id: ". $ctCalEntry->getId());
 						if ($isRepeating) {
-							$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()." and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ))."';");
+							$wpdb->query($wpdb->prepare(
+								"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+								$ctCalEntry->getId(),
+								date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+							));
 						} else {
-							$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+							$wpdb->query($wpdb->prepare(
+								"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+								$ctCalEntry->getId()
+							));
 						}
 						$event= new EM_Event(false);
 						$event->event_type= "single";
@@ -193,9 +200,16 @@ function processCalendarEntry(
 					// No longer found, deleted?
 					logInfo("Event no longer found in wp, removing from mapping, ct id: ".$ctCalEntry->getId());
 					if ($isRepeating) {
-						$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()." and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ))."';");
+						$wpdb->query($wpdb->prepare(
+							"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+							$ctCalEntry->getId(),
+							date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+						));
 					} else {
-						$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+						$wpdb->query($wpdb->prepare(
+							"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+							$ctCalEntry->getId()
+						));
 					}
 					$addMode= true;
 				}
@@ -422,23 +436,32 @@ function processCalendarEntry(
 					}
 				} else {
 					// Update last seen time stamp to flag as "still existing"
-					$sql= "UPDATE ".$wpctsync_tablename.
-						" SET last_seen='".date('Y-m-d H:i:s')."' ";
+					$updateData = ['last_seen' => date('Y-m-d H:i:s')];
+					$updateFormat = ['%s'];
+
 					if ($newCtImageID != null) {
-						$sql.= ", ct_image_id=".$newCtImageID." ";
+						$updateData['ct_image_id'] = $newCtImageID;
+						$updateFormat[] = '%d';
 					}
-					if ($newCTFlyerId!= null) {
-						$sql.= ", ct_flyer_id=".$newCTFlyerId." ";
+					if ($newCTFlyerId != null) {
+						$updateData['ct_flyer_id'] = $newCTFlyerId;
+						$updateFormat[] = '%d';
 					}
 					if ($newWPFlyerId != null) {
-						$sql.= ", wp_flyer_id=".$newWPFlyerId." ";
+						$updateData['wp_flyer_id'] = $newWPFlyerId;
+						$updateFormat[] = '%d';
 					}
-					$sql.= "WHERE ct_id=".$ctCalEntry->getId();
-					if ($isRepeating ) {
-						$sql.= " AND event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ). " ';";
+
+					$whereData = ['ct_id' => $ctCalEntry->getId()];
+					$whereFormat = ['%d'];
+
+					if ($isRepeating) {
+						$whereData['event_start'] = date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s');
+						$whereFormat[] = '%s';
 					}
-					$wpdb->query($wpdb->prepare($sql));
-					logDebug(serialize($sql));
+
+					$wpdb->update($wpctsync_tablename, $updateData, $whereData, $updateFormat, $whereFormat);
+					logDebug("Updated mapping for ct_id: " . $ctCalEntry->getId());
 				}
 				// Handle event categories from resource type and CT tags
 				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment, $config->enableTagCategories);
@@ -450,9 +473,16 @@ function processCalendarEntry(
 			global $wpctsync_tablename;
 			global $wpdb;
 			if ($isRepeating) {
-				$result= $wpdb->get_results(sprintf('SELECT * FROM `%2$s` WHERE `ct_id` = %d and event_start=\''.date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' )."'", $ctCalEntry->getId(), $wpctsync_tablename));
+				$result = $wpdb->get_results($wpdb->prepare(
+					"SELECT * FROM `{$wpctsync_tablename}` WHERE `ct_id` = %d AND event_start = %s",
+					$ctCalEntry->getId(),
+					date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+				));
 			} else {
-				$result= $wpdb->get_results(sprintf('SELECT * FROM `%2$s` WHERE `ct_id` = %d ', $ctCalEntry->getId(), $wpctsync_tablename));
+				$result = $wpdb->get_results($wpdb->prepare(
+					"SELECT * FROM `{$wpctsync_tablename}` WHERE `ct_id` = %d",
+					$ctCalEntry->getId()
+				));
 			}
 			$addMode= false;
 			if (sizeof($result) == 1) {
@@ -465,10 +495,17 @@ function processCalendarEntry(
 				}
 				if ($isRepeating) {
 					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId()." start date: ".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ));
-					$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId(). "and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' )."';"));
+					$wpdb->query($wpdb->prepare(
+						"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+						$ctCalEntry->getId(),
+						date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+					));
 				} else {
-					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId());            
-					$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId());
+					$wpdb->query($wpdb->prepare(
+						"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+						$ctCalEntry->getId()
+					));
 				}
 			}        
 		}
@@ -632,21 +669,27 @@ function updateEventCategories(
 function cleanupOldEntries(string $startDate, string $processingStart): void {
     global $wpctsync_tablename;
     global $wpdb;
-    $sql= 'SELECT * FROM `'.$wpctsync_tablename.'` WHERE `event_start` >= \''.$startDate.'\' and last_seen < \''.$processingStart.'\'' ;
-    $result = $wpdb->get_results($sql);
-    // logDebug("Found ".sizeof($result).' events to delete via '.$sql);
+    $result = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM `{$wpctsync_tablename}` WHERE `event_start` >= %s AND last_seen < %s",
+        $startDate,
+        $processingStart
+    ));
+    // logDebug("Found ".sizeof($result).' events to delete');
     // Now process all deletions
     foreach ($result as $key => $toDelRecord) {
-        $delID= $toDelRecord->id; // PK in sync table
-        $ctID= $toDelRecord->ct_id; // CT appintment id in sync table
-        $wpEventID= $toDelRecord->wp_id; // WP event id
+        $delID = $toDelRecord->id; // PK in sync table
+        $ctID = $toDelRecord->ct_id; // CT appointment id in sync table
+        $wpEventID = $toDelRecord->wp_id; // WP event id
         // logDebug("Deleting wp event with id ".$wpEventID);
-        $toDelEvent= new EM_Event($wpEventID);
+        $toDelEvent = new EM_Event($wpEventID);
         if ($toDelEvent != null) {
             $toDelEvent->delete(false);
         }
         logDebug("Deleting mapping entry for ct_id: ".$ctID." via PK id: ".$delID);
-        $wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE id=".$delID));
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM `{$wpctsync_tablename}` WHERE id = %d",
+            $delID
+        ));
     }
 }
 

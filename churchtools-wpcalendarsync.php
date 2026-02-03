@@ -53,10 +53,13 @@ function register_ctwpsync_settings(): void {
 	register_setting('ctwpsync-group', 'ctwpsync_import_future'); // Days in the future to sync
 	register_setting('ctwpsync-group', 'ctwpsync_resourcetype_for_categories'); // Sync categories from resources
 
-	$myPage = $_GET['page'] ?? '';
+	$myPage = sanitize_text_field($_GET['page'] ?? '');
 	if ($myPage === str_replace('.php', '', basename(__FILE__))) {
-		if (!empty($_POST['ctwpsync_url']) && !empty($_POST['ctwpsync_apitoken'])) {
-			save_ctwpsync_settings();
+		// Verify nonce before processing POST data
+		if (isset($_POST['ctwpsync_nonce']) && wp_verify_nonce($_POST['ctwpsync_nonce'], 'ctwpsync_settings_save')) {
+			if (!empty($_POST['ctwpsync_url'])) {
+				save_ctwpsync_settings();
+			}
 		}
 	}
 }
@@ -77,13 +80,24 @@ function ctwpsync_dashboard(): void {
 }
 
 /**
- * Handle the ajax call to save settings
+ * Handle the form submission to save settings
  */
 function save_ctwpsync_settings(): void {
+	// Check user capabilities
+	if (!current_user_can('manage_options')) {
+		wp_die(__('You do not have sufficient permissions to access this page.'));
+	}
+
+	$saved_data = get_option('ctwpsync_options');
+
+	// If API token is empty, keep the existing one
+	if (empty($_POST['ctwpsync_apitoken']) && $saved_data && !empty($saved_data['apitoken'])) {
+		$_POST['ctwpsync_apitoken'] = $saved_data['apitoken'];
+	}
+
 	$config = SyncConfig::fromPost();
 	$data = $config->toArray();
 
-	$saved_data = get_option('ctwpsync_options');
 	if ($saved_data) {
 		update_option('ctwpsync_options', $data);
 	} else {
