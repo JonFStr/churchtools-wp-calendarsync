@@ -6,9 +6,10 @@
   - Tags are added alongside existing category sources (calendar mapping, resource bookings)
   - Enable via checkbox in plugin settings: "Sync ChurchTools appointment tags as event categories"
   - Requires churchtools-api library with appointment-tag-support branch
-- **Add connection validation button**
+- **Add connection validation**
   - New "Validate Connection" button in settings to test ChurchTools URL and API token
   - Shows connected user name on success or error message on failure
+  - Settings are automatically validated before saving - invalid credentials prevent save
 
 ## 2025-12-06
 - Prepare php 8.2+ only support

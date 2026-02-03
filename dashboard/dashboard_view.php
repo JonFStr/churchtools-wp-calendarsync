@@ -50,7 +50,48 @@
 
 <script>
 jQuery(document).ready(function($) {
+	// Manual validation button
 	$('#ctwpsync_validate_connection').click(function() {
+		validateConnection();
+	});
+
+	// Intercept form submission to validate first
+	$('form.ctwpsync_settings').submit(function(e) {
+		var url = $('#ctwpsync_url').val();
+		var token = $('#ctwpsync_apitoken').val();
+
+		// If URL or token is empty, let HTML5 validation handle it
+		if (!url || !token) {
+			return true;
+		}
+
+		// Prevent form submission until validation passes
+		e.preventDefault();
+
+		$('#ctwpsync_validation_result').html('<span style="color:blue;">Validating before save...</span>');
+		$('input[type="submit"]').prop('disabled', true);
+
+		$.post(ajaxurl, {
+			action: 'ctwpsync_validate_connection',
+			url: url,
+			token: token,
+			nonce: '<?php echo wp_create_nonce("ctwpsync_validate"); ?>'
+		}, function(response) {
+			if (response.success) {
+				$('#ctwpsync_validation_result').html('<span style="color:green;">\u2713 ' + response.data + ' - Saving...</span>');
+				// Validation passed, submit the form
+				$('form.ctwpsync_settings').off('submit').submit();
+			} else {
+				$('#ctwpsync_validation_result').html('<span style="color:red;">\u2717 ' + response.data + ' - Save cancelled</span>');
+				$('input[type="submit"]').prop('disabled', false);
+			}
+		}).fail(function() {
+			$('#ctwpsync_validation_result').html('<span style="color:red;">\u2717 Validation request failed - Save cancelled</span>');
+			$('input[type="submit"]').prop('disabled', false);
+		});
+	});
+
+	function validateConnection() {
 		var url = $('#ctwpsync_url').val();
 		var token = $('#ctwpsync_apitoken').val();
 
@@ -78,6 +119,6 @@ jQuery(document).ready(function($) {
 			$('#ctwpsync_validate_connection').prop('disabled', false);
 			$('#ctwpsync_validation_result').html('<span style="color:red;">\u2717 Request failed</span>');
 		});
-	});
+	}
 });
 </script>
