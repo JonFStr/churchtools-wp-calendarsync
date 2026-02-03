@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ref-nidau-ch/churchtools-api.git",
-                "reference": "a8afc4cace56acb13aecd4360e524a75bcad6322"
+                "reference": "d5e2e522db5e40aa0880ff21d6291650b502847b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ref-nidau-ch/churchtools-api/zipball/a8afc4cace56acb13aecd4360e524a75bcad6322",
-                "reference": "a8afc4cace56acb13aecd4360e524a75bcad6322",
+                "url": "https://api.github.com/repos/ref-nidau-ch/churchtools-api/zipball/d5e2e522db5e40aa0880ff21d6291650b502847b",
+                "reference": "d5e2e522db5e40aa0880ff21d6291650b502847b",
                 "shasum": ""
             },
             "require": {
@@ -84,7 +84,7 @@
             "support": {
                 "source": "https://github.com/ref-nidau-ch/churchtools-api/tree/appointment-tag-support"
             },
-            "time": "2026-01-15T17:14:17+00:00"
+            "time": "2026-02-03T23:07:39+00:00"
         },
         {
             "name": "doctrine/cache",
@@ -948,5 +948,5 @@
         "php": "^8.1"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }

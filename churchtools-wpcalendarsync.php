@@ -445,7 +445,7 @@ function ctwpsync_get_resource_types_callback(): void {
 		\CTApi\CTConfig::setApiKey($token);
 
 		// Fetch all resource types
-		$resourceTypes = \CTApi\Models\Resources\ResourceType\ResourceTypeRequest::all();
+		$resourceTypes = \CTApi\Models\Calendars\Resource\ResourceTypeRequest::all();
 
 		$result = [];
 		foreach ($resourceTypes as $rt) {
