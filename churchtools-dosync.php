@@ -38,6 +38,12 @@ if (!is_plugin_active('events-manager/events-manager.php')) {
     return;
 }
 
+// Check if options exist
+if ($options === false || !is_array($options)) {
+    logError("No sync options found, doing nothing");
+    return;
+}
+
 // Define taxonomy constant if not already defined by Events Manager
 // In EM 7.2+, the constant might not be defined, so we set it to the correct taxonomy name
 if (!defined('EM_TAXONOMY_CATEGORY')) {
