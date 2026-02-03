@@ -37,17 +37,31 @@ readonly class SyncConfig {
     /**
      * Create configuration from POST data
      *
-     * @return self
+     * @return self|null Returns null if URL validation fails
      */
-    public static function fromPost(): self {
+    public static function fromPost(): ?self {
+        // Validate and sanitize URL
+        $url = rtrim(trim($_POST['ctwpsync_url'] ?? ''), '/') . '/';
+        $url = esc_url_raw($url);
+        if (empty($url) || $url === '/' || !filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        // Validate and clamp import range values (reasonable limits: -365 to 730 days)
+        $importPast = (int)trim($_POST['ctwpsync_import_past'] ?? '0');
+        $importPast = max(-365, min(365, $importPast));
+
+        $importFuture = (int)trim($_POST['ctwpsync_import_future'] ?? '380');
+        $importFuture = max(-365, min(730, $importFuture));
+
         return new self(
-            url: rtrim(trim($_POST['ctwpsync_url']), '/') . '/',
-            apiToken: trim($_POST['ctwpsync_apitoken']),
+            url: $url,
+            apiToken: trim($_POST['ctwpsync_apitoken'] ?? ''),
             calendars: self::parseCalendarsFromPost(),
-            importPast: (int)trim($_POST['ctwpsync_import_past']),
-            importFuture: (int)trim($_POST['ctwpsync_import_future']),
-            resourceTypeForCategories: (int)trim($_POST['ctwpsync_resourcetype_for_categories']),
-            emImageAttr: trim($_POST['ctwpsync_em_image_attr']),
+            importPast: $importPast,
+            importFuture: $importFuture,
+            resourceTypeForCategories: (int)trim($_POST['ctwpsync_resourcetype_for_categories'] ?? '-1'),
+            emImageAttr: sanitize_text_field(trim($_POST['ctwpsync_em_image_attr'] ?? '')),
             enableTagCategories: isset($_POST['ctwpsync_enable_tag_categories']),
         );
     }
@@ -63,13 +77,26 @@ readonly class SyncConfig {
             return null;
         }
 
+        // Validate URL format
+        $url = $options['url'];
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        // Clamp import range values
+        $importPast = (int)($options['import_past'] ?? 0);
+        $importPast = max(-365, min(365, $importPast));
+
+        $importFuture = (int)($options['import_future'] ?? 380);
+        $importFuture = max(-365, min(730, $importFuture));
+
         return new self(
-            url: $options['url'],
+            url: $url,
             apiToken: $options['apitoken'],
             calendars: $options['calendars'] ?? [],
-            importPast: $options['import_past'] ?? 0,
-            importFuture: $options['import_future'] ?? 380,
-            resourceTypeForCategories: $options['resourcetype_for_categories'] ?? -1,
+            importPast: $importPast,
+            importFuture: $importFuture,
+            resourceTypeForCategories: (int)($options['resourcetype_for_categories'] ?? -1),
             emImageAttr: $options['em_image_attr'] ?? '',
             enableTagCategories: $options['enable_tag_categories'] ?? false,
         );
@@ -102,11 +129,12 @@ readonly class SyncConfig {
         $calendars = [];
         if (isset($_POST['ctwpsync_calendars']) && is_array($_POST['ctwpsync_calendars'])) {
             foreach ($_POST['ctwpsync_calendars'] as $calData) {
-                if (!empty($calData['id'])) {
+                // Validate calendar ID is numeric and positive
+                if (!empty($calData['id']) && is_numeric($calData['id']) && (int)$calData['id'] > 0) {
                     $calendars[] = [
                         'id' => (int)$calData['id'],
-                        'name' => trim($calData['name'] ?? ''),
-                        'category' => trim($calData['category'] ?? ''),
+                        'name' => sanitize_text_field(trim($calData['name'] ?? '')),
+                        'category' => sanitize_text_field(trim($calData['category'] ?? '')),
                     ];
                 }
             }

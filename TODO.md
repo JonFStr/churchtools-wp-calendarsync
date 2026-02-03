@@ -3,6 +3,7 @@
 This file contains identified issues and improvements from code review that should be addressed in future updates.
 
 ## Completed (2026-02-04)
+- [x] Input validation - Added URL validation, range clamping for import days, calendar ID validation
 - [x] Error handling for external API calls - Added try-catch for AppointmentRequest, CombinedAppointmentRequest, FileRequest
 - [x] File download error handling - Added error checking for file_get_contents calls
 
@@ -16,28 +17,6 @@ This file contains identified issues and improvements from code review that shou
 - [x] UI error tooltips - Error indicators now show detailed messages on hover
 - [x] PHP 8.2 return type fixes - Fixed nullable return type violations in migration functions
 - [x] Options validation - Added check for false/non-array options before SyncConfig::fromOptions()
-
----
-
-## High Priority
-
-### 1. Input Validation
-**File:** `includes/SyncConfig.php`
-
-**Issues:**
-- No URL format validation
-- No range validation for import_past/import_future
-- No validation that calendar IDs are numeric
-
-**Recommendation:**
-```php
-$url = esc_url_raw($url);
-if (!filter_var($url, FILTER_VALIDATE_URL)) {
-    return null;
-}
-
-$import_past = max(-365, min(365, (int)$import_past));
-```
 
 ---
 

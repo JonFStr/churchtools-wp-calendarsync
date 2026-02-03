@@ -96,6 +96,10 @@ function save_ctwpsync_settings(): void {
 	}
 
 	$config = SyncConfig::fromPost();
+	if ($config === null) {
+		add_settings_error('ctwpsync_options', 'invalid_url', __('Invalid URL format. Please enter a valid ChurchTools URL.', 'ctwpsync'), 'error');
+		return;
+	}
 	$data = $config->toArray();
 
 	if ($saved_data) {
