@@ -1053,7 +1053,7 @@ function ctwpsync_migrate_to_em72(): ?array {
     $migration_completed = get_option('ctwpsync_em72_migration_completed_v2');
     if ($migration_completed) {
         logDebug("Events Manager 7.2+ migration already completed, skipping");
-        return;
+        return null;
     }
 
     logInfo("Starting Events Manager 7.2+ migration for existing events (event_archetype field)");
@@ -1067,7 +1067,7 @@ function ctwpsync_migrate_to_em72(): ?array {
     if (count($column_exists) == 0) {
         logInfo("event_archetype column does not exist in em_events table, skipping migration");
         update_option('ctwpsync_em72_migration_completed_v2', true);
-        return;
+        return null;
     }
 
     // Update all events where event_archetype is NULL to "event"
@@ -1079,7 +1079,7 @@ function ctwpsync_migrate_to_em72(): ?array {
 
     if ($result === false) {
         logError("Failed to update event_archetype field during migration");
-        return;
+        return null;
     }
 
     // Mark migration as completed
