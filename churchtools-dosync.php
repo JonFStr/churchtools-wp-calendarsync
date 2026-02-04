@@ -1,5 +1,5 @@
 <?php
-if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
+if (is_readable(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
 }
 
@@ -15,24 +15,32 @@ use CTApi\Models\Common\File\FileRequest;
 
 CTLog::enableFileLog(); // enable logfile
 
-
-global $wpctsyncDoInfoLog;
-$wpctsyncDoInfoLog= true;
-global $wpctsyncDoDebugLog;
-$wpctsyncDoDebugLog= false;
+// Initialize logger (PHP 8.2 readonly class)
+global $ctwpsync_logger;
+$ctwpsync_logger = new SyncLogger(
+    logFile: plugin_dir_path(__FILE__) . 'wpcalsync.log',
+    debugEnabled: false,
+    infoEnabled: true
+);
 
 global $wpdb;
 $wpdb_prefix = $wpdb->prefix;
 global $wpctsync_tablename;
-$wpctsync_tablename = $wpdb_prefix.'ctwpsync_mapping';
+$wpctsync_tablename = $wpdb_prefix . 'ctwpsync_mapping';
 
 
-$hasError= false;
-$errorMessage= null;
-$options =  get_option('ctwpsync_options');
+$hasError = false;
+$errorMessage = null;
+$options = get_option('ctwpsync_options');
 
 if (!is_plugin_active('events-manager/events-manager.php')) {
     logError("We need an activated events manager plugin, doing nothing");
+    return;
+}
+
+// Check if options exist
+if ($options === false || !is_array($options)) {
+    logError("No sync options found, doing nothing");
     return;
 }
 
@@ -42,12 +50,14 @@ if (!defined('EM_TAXONOMY_CATEGORY')) {
     define('EM_TAXONOMY_CATEGORY', 'event-categories');
 }
 
-// Make sure it's configured, else do nothing
-if(empty($options) || empty($options['url']) || empty($options['apitoken'])){
+// Create configuration object (PHP 8.2 readonly class)
+$config = SyncConfig::fromOptions($options);
+if ($config === null) {
     logError("No sync options found, (url and/or api token missing), doing nothing");
     return;
 }
-if (get_current_user_id() == 0) {
+
+if (get_current_user_id() === 0) {
     logError("No user specified, doing nothing since events needs an owner");
     return;
 }
@@ -57,95 +67,83 @@ if (!is_user_logged_in()) {
     return;
 }
 
-$startTimestamp= Date('Y-m-d H:i:s');
-logInfo("Start sync cycle ".$startTimestamp);
-try
-{
+$startTimestamp = date('Y-m-d H:i:s');
+logInfo("Start sync cycle {$startTimestamp}");
+set_transient('churchtools_wpcalendarsync_in_progress', $startTimestamp, 600); // 10 min max
+try {
 	set_time_limit(300); // 5min to process all events
-    $serverURL= $options['url'];
-    $apiToken= $options['apitoken'];
-    CTConfig::setApiURL($serverURL);
-    CTConfig::setApiKey($apiToken);
+
+    // Configure ChurchTools API using config object
+    CTConfig::setApiURL($config->url);
+    CTConfig::setApiKey($config->apiToken);
     CTConfig::validateConfig();
-    $calendars= $options['ids'];
-    $calendars_categories= $options['ids_categories'];
-    $calendars_categories_mapping= [];
 
-    $i = 0;
-    while($i < count($calendars))
-    {
-        if ($i < count($calendars_categories)) {
-            if (isset($calendars_categories[$i])) {
-                $calendars_categories_mapping[$calendars[$i]]=  $calendars_categories[$i];
-            } else {
-                $calendars_categories_mapping[$calendars[$i]]=  null;
-            }
-        } else {
-            logInfo("Calendar categories maping out of range ".$i);
-            logInfo(serialize($calendars));
-            logInfo(serialize($calendars_categories));
-            $calendars_categories_mapping[$calendars[$i]]=  null;
-        }
-        $i++;
-    } 
-    logDebug("Categories mapping via calendar ID's: ".serialize($calendars_categories_mapping));
+    // Get calendar and category mappings from config
+    $calendars = $config->getCalendarIds();
+    if (empty($calendars)) {
+        logError("No calendars configured, doing nothing");
+        return;
+    }
+    $calendars_categories_mapping = $config->getCategoryMapping();
 
-    $pastDays= $options['import_past'];
-    $futureDays=  $options['import_future'];
-    $resourcetype_for_categories= $options['resourcetype_for_categories'];
-    // Make sure to have a valid expression, and not something like "now - -1"
-    if ($pastDays < 0) {
-        $fromDate= Date('Y-m-d', strtotime('+'.($pastDays*-1).' days'));
-    } else {
-        $fromDate= Date('Y-m-d', strtotime('-'.$pastDays.' days'));
-    }
-    // Make sure to have a valid expression, and not something like "now - -1"
-    if ($futureDays < 0) {
-        $toDate= Date('Y-m-d', strtotime('-'.($futureDays*-1).' days'));
-    } else {
-        $toDate= Date('Y-m-d', strtotime('+'.$futureDays.' days'));
-    }
+    logDebug("Categories mapping via calendar ID's: " . json_encode($calendars_categories_mapping));
+
+    // Get date range from config
+    $fromDate = $config->getFromDate();
+    $toDate = $config->getToDate();
+    $resourcetype_for_categories = $config->resourceTypeForCategories;
     
-    $api= new CTClient();
-    logInfo("Searching calendar entries from ".$fromDate." until ".$toDate. " in calendars [".implode(",", $calendars)."]");
-    $result= AppointmentRequest::forCalendars($calendars)
-        ->where('from', $fromDate)
-        ->where('to', $toDate)
-        ->get();
+    $api = new CTClient();
+    logInfo("Searching calendar entries from {$fromDate} until {$toDate} in calendars [" . implode(",", $calendars) . "]");
+    try {
+        $result = AppointmentRequest::forCalendars($calendars)
+            ->where('from', $fromDate)
+            ->where('to', $toDate)
+            ->get();
+    } catch (\CTApi\Exceptions\CTRequestException $e) {
+        logError("Failed to fetch appointments from ChurchTools: " . $e->getMessage());
+        throw $e;
+    } catch (\CTApi\Exceptions\CTConnectException $e) {
+        logError("Connection to ChurchTools failed: " . $e->getMessage());
+        throw $e;
+    }
     foreach ($result as $key => $ctCalEntry) {
-        processCalendarEntry($ctCalEntry, $calendars_categories_mapping, $resourcetype_for_categories);
+        processCalendarEntry($ctCalEntry, $calendars_categories_mapping, $resourcetype_for_categories, $config);
     }
     // Now we will have to handle all wp events which are no longer visible
     // from CT (Either deleted or moved in another calendar)
     // But don't remove old entries
     cleanupOldEntries($fromDate, $startTimestamp);
-    $endTimestamp= Date('Y-m-d H:i:s');
-    $sdt= new DateTime($startTimestamp);
-    $edt= new DateTime($endTimestamp);
-    set_transient('churchtools_wpcalendarsync_lastupdated',$startTimestamp.' to '.$endTimestamp, 0);
+    $endTimestamp = date('Y-m-d H:i:s');
+    $sdt = new DateTime($startTimestamp);
+    $edt = new DateTime($endTimestamp);
+    set_transient('churchtools_wpcalendarsync_lastupdated', "{$startTimestamp} to {$endTimestamp}", 0);
     $interval = $edt->diff($sdt);
-    set_transient('churchtools_wpcalendarsync_lastsyncduration',$interval->format('%H:%I:%S'), 0);
-}
-catch (Exception $e)
-{
-    $errorMessage= $e->getMessage();
+    set_transient('churchtools_wpcalendarsync_lastsyncduration', $interval->format('%H:%I:%S'), 0);
+    delete_transient('churchtools_wpcalendarsync_in_progress');
+} catch (Exception $e) {
+    $errorMessage = $e->getMessage();
     logError($errorMessage);
-    $hasError= true;
-    session_destroy();
+    $hasError = true;
+    delete_transient('churchtools_wpcalendarsync_in_progress');
 }
-logInfo("End sync cycle ".Date('Y-m-d H:i:s'));
+logInfo("End sync cycle " . date('Y-m-d H:i:s'));
 
 /**
- * 
  * Process a single calendar entry from ct and create or update wp event
- * 
+ *
  * @param Appointment $ctCalEntry a CT calendar entry to be analyzed and processed
  * @param array $calendars_categories_mapping Array with category for calendar mapping
- * @param int $resourcetype_for_categories Us this resource type for categories mapping
- * 
+ * @param int $resourcetype_for_categories Use this resource type for categories mapping
+ * @param SyncConfig $config Sync configuration object
  */
-function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categories_mapping, int $resourcetype_for_categories) {
-    $isRepeating= $ctCalEntry->getRepeatId() != "0";
+function processCalendarEntry(
+    Appointment $ctCalEntry,
+    array $calendars_categories_mapping,
+    int $resourcetype_for_categories,
+    SyncConfig $config
+): void {
+    $isRepeating = $ctCalEntry->getRepeatId() !== "0";
 	global $wpdb;
 	// begin transaction, so we don't have duplicate entries
 	// if an execution timeout occurs
@@ -155,8 +153,8 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 		if (!$ctCalEntry->getIsInternal()) {
 			logDebug("Caption: ".$ctCalEntry->getCaption()." StartDate: ".$ctCalEntry->getStartDate()." EndDate: ".$ctCalEntry->getEndDate().
 				" Is allday: ".$ctCalEntry->getAllDay().($isRepeating ? " Is repeating" : " Is not repeating"));
-			logDebug("Start date time" .serialize($ctCalEntry->getStartDateAsDateTime()));
-			logDebug("End date time" .serialize($ctCalEntry->getEndDateAsDateTime()));
+			logDebug("Start date time: " . ($ctCalEntry->getStartDateAsDateTime()?->format('Y-m-d H:i:s T') ?? 'null'));
+			logDebug("End date time: " . ($ctCalEntry->getEndDateAsDateTime()?->format('Y-m-d H:i:s T') ?? 'null'));
 			//logDebug("Object: ".serialize($ctCalEntry));
 			global $wpctsync_tablename;
 			if ($isRepeating) {
@@ -165,7 +163,7 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 			} else {
 				$sql= $wpdb->prepare('SELECT * FROM `'.$wpctsync_tablename.'` WHERE `ct_id` = %d ;', array($ctCalEntry->getId()));
 			}
-			logDebug(serialize($sql));
+			logDebug("SQL: " . $sql);
 			$result= $wpdb->get_results($sql);
 			$addMode= false;
 			$ct_image_id= null; // CT file id of image
@@ -191,9 +189,16 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 						// Is deleted
 						logInfo("Event is in wp trash, removing from mapping ct id: ". $ctCalEntry->getId());
 						if ($isRepeating) {
-							$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()." and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ))."';");
+							$wpdb->query($wpdb->prepare(
+								"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+								$ctCalEntry->getId(),
+								date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+							));
 						} else {
-							$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+							$wpdb->query($wpdb->prepare(
+								"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+								$ctCalEntry->getId()
+							));
 						}
 						$event= new EM_Event(false);
 						$event->event_type= "single";
@@ -211,9 +216,16 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 					// No longer found, deleted?
 					logInfo("Event no longer found in wp, removing from mapping, ct id: ".$ctCalEntry->getId());
 					if ($isRepeating) {
-						$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()." and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ))."';");
+						$wpdb->query($wpdb->prepare(
+							"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+							$ctCalEntry->getId(),
+							date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+						));
 					} else {
-						$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+						$wpdb->query($wpdb->prepare(
+							"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+							$ctCalEntry->getId()
+						));
 					}
 					$addMode= true;
 				}
@@ -269,8 +281,18 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 			} else {
 				$sDate= \DateTime::createFromFormat('Y-m-d\TH:i:s+', $ctCalEntry->getStartDate(), new DateTimeZone('UTC'));
 			}
+			if ($sDate === false) {
+				logError("Invalid start date format for ct_id " . $ctCalEntry->getId() . ": " . $ctCalEntry->getStartDate());
+				$wpdb->query('COMMIT');
+				return;
+			}
 			// Look into event and resources
-			$combinedAppointment= CombinedAppointmentRequest::forAppointment($ctCalEntry->getCalendar()->getId(), $ctCalEntry->getId(), $sDate->format('Y-m-d'))->get();
+			$combinedAppointment = null;
+			try {
+				$combinedAppointment = CombinedAppointmentRequest::forAppointment($ctCalEntry->getCalendar()->getId(), $ctCalEntry->getId(), $sDate->format('Y-m-d'))->get();
+			} catch (\CTApi\Exceptions\CTRequestException $e) {
+				logError("Failed to fetch combined appointment for ct_id " . $ctCalEntry->getId() . ": " . $e->getMessage());
+			}
 			if ($combinedAppointment != null) {
 				logDebug("Found combined appointment");
 				$ctEvent= $combinedAppointment->getEvent();
@@ -280,7 +302,12 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 					$eventId= $ctEvent->getId();
 					if ($eventId != null ){
 						logDebug("Found ct event with ID ".$eventId);
-						$eventFiles= FileRequest::forEvent($eventId)->get();
+						$eventFiles = null;
+						try {
+							$eventFiles = FileRequest::forEvent($eventId)->get();
+						} catch (\CTApi\Exceptions\CTRequestException $e) {
+							logError("Failed to fetch files for event " . $eventId . ": " . $e->getMessage());
+						}
 						if ($eventFiles != null) {
 							foreach ($eventFiles as $ctFile) {
 								if ($ctFile->getName() != null && str_contains(strtolower($ctFile->getName()), "flyer")) {
@@ -322,6 +349,11 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 			if ($ctCalEntry->getAllDay() === "true") {
 				$sDate= \DateTime::createFromFormat('Y-m-d', $ctCalEntry->getStartDate(), new DateTimeZone('UTC'));
 				$eDate= \DateTime::createFromFormat('Y-m-d', $ctCalEntry->getEndDate(), new DateTimeZone('UTC'));
+				if ($sDate === false || $eDate === false) {
+					logError("Invalid date format for all-day event ct_id " . $ctCalEntry->getId() . ": start=" . $ctCalEntry->getStartDate() . ", end=" . $ctCalEntry->getEndDate());
+					$wpdb->query('COMMIT');
+					return;
+				}
 				logDebug("StartDate: ".$sDate->format('Y-m-d H:i:s'));
 				$event->event_start_date= $sDate->format('Y-m-d');
 				$event->event_end_date= $eDate->format('Y-m-d');
@@ -399,16 +431,16 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 			$event->event_rsvp = false;
 
 			// Save event image URL to custom attribute, if enabled
-			$img_attr_name = get_option( 'ctwpsync_options' )['em_image_attr'] ?? '';
-			if ( $imageURL != null && ! empty( $img_attr_name ) ) {
+			$img_attr_name = $config->emImageAttr;
+			if ($imageURL !== null && !empty($img_attr_name)) {
 				// Image embedding enabled, store URL instead of downloading image
-				$event->event_attributes[ $img_attr_name ] = $imageURL;
-				logDebug( "Stored image URL " . $imageURL . " for " . $imageName . " in custom attribute " . $img_attr_name );
+				$event->event_attributes[$img_attr_name] = $imageURL;
+				logDebug("Stored image URL {$imageURL} for {$imageName} in custom attribute {$img_attr_name}");
 			}
 
 			$saveResult= $event->save();
 			if ($saveResult) {
-				logDebug("Saved ct event id: ".$ctCalEntry->getId(). " WP event ID ".$event->event_id." post id: ".$event->ID." result: ".$saveResult." serialized: ".serialize($saveResult) );
+				logDebug("Saved ct event id: " . $ctCalEntry->getId() . " WP event ID " . $event->event_id . " post id: " . $event->ID);
 
 				// Set post_status to 'publish' so the event is displayed on the website
 				// This is especially important for Events Manager 7.x
@@ -434,43 +466,61 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 						'event_start' => $ctCalEntry->getStartDate(),
 						'event_end' => $ctCalEntry->getEndDate(),
 						'ct_repeating' => $isRepeating ? 1 : 0
-						))) 
+						)))
 						{
-							logError("Error inserting mapping, duplicates will occure ".$wpdb->last_error);
+							logError("Error inserting mapping: ".$wpdb->last_error);
 					}
 				} else {
 					// Update last seen time stamp to flag as "still existing"
-					$sql= "UPDATE ".$wpctsync_tablename.
-						" SET last_seen='".date('Y-m-d H:i:s')."' ";
+					$updateData = ['last_seen' => date('Y-m-d H:i:s')];
+					$updateFormat = ['%s'];
+
 					if ($newCtImageID != null) {
-						$sql.= ", ct_image_id=".$newCtImageID." ";
+						$updateData['ct_image_id'] = $newCtImageID;
+						$updateFormat[] = '%d';
 					}
-					if ($newCTFlyerId!= null) {
-						$sql.= ", ct_flyer_id=".$newCTFlyerId." ";
+					if ($newCTFlyerId != null) {
+						$updateData['ct_flyer_id'] = $newCTFlyerId;
+						$updateFormat[] = '%d';
 					}
 					if ($newWPFlyerId != null) {
-						$sql.= ", wp_flyer_id=".$newWPFlyerId." ";
+						$updateData['wp_flyer_id'] = $newWPFlyerId;
+						$updateFormat[] = '%d';
 					}
-					$sql.= "WHERE ct_id=".$ctCalEntry->getId();
-					if ($isRepeating ) {
-						$sql.= " AND event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ). " ';";
+
+					$whereData = ['ct_id' => $ctCalEntry->getId()];
+					$whereFormat = ['%d'];
+
+					if ($isRepeating) {
+						$whereData['event_start'] = date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s');
+						$whereFormat[] = '%s';
 					}
-					$wpdb->query($wpdb->prepare($sql));
-					logDebug(serialize($sql));
+
+					$wpdb->update($wpctsync_tablename, $updateData, $whereData, $updateFormat, $whereFormat);
+					logDebug("Updated mapping for ct_id: " . $ctCalEntry->getId());
 				}
-				// Handle event categories from resource type
-				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment);
+				// Handle event categories from resource type and CT tags
+				updateEventCategories($calendars_categories_mapping, $resourcetype_for_categories, $ctCalEntry, $event, $combinedAppointment, $config->enableTagCategories);
 			} else {
-				logError("Saving new event failed for ct id: ".$ctCalEntry->getId() );
+				$errors = $event->get_errors();
+				$errorDetails = !empty($errors) ? ' Errors: ' . implode(', ', $errors) : '';
+				logError("Saving new event failed for ct id: ".$ctCalEntry->getId()." name: ".$ctCalEntry->getCaption().$errorDetails);
 			}
 		} else {
 			// Perhaps we need to remove it, since visibility has changed
 			global $wpctsync_tablename;
 			global $wpdb;
 			if ($isRepeating) {
-				$result= $wpdb->get_results(sprintf('SELECT * FROM `%2$s` WHERE `ct_id` = %d and event_start=\''.date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' )."'", $ctCalEntry->getId(), $wpctsync_tablename));
+				$result = $wpdb->get_results($wpdb->prepare(
+					"SELECT * FROM `{$wpctsync_tablename}` WHERE `ct_id` = %d AND event_start = %s",
+					$ctCalEntry->getId(),
+					date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+				));
 			} else {
-				$result= $wpdb->get_results(sprintf('SELECT * FROM `%2$s` WHERE `ct_id` = %d ', $ctCalEntry->getId(), $wpctsync_tablename));
+				$result = $wpdb->get_results($wpdb->prepare(
+					"SELECT * FROM `{$wpctsync_tablename}` WHERE `ct_id` = %d",
+					$ctCalEntry->getId()
+				));
 			}
 			$addMode= false;
 			if (sizeof($result) == 1) {
@@ -483,10 +533,17 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 				}
 				if ($isRepeating) {
 					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId()." start date: ".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' ));
-					$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId(). "and event_start='".date_format( date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s' )."';"));
+					$wpdb->query($wpdb->prepare(
+						"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d AND event_start = %s",
+						$ctCalEntry->getId(),
+						date_format(date_create($ctCalEntry->getStartDate()), 'Y-m-d H:i:s')
+					));
 				} else {
-					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId());            
-					$wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE ct_id=".$ctCalEntry->getId()));
+					logDebug("Deleting mapping entry for ct_id: ".$ctCalEntry->getId());
+					$wpdb->query($wpdb->prepare(
+						"DELETE FROM `{$wpctsync_tablename}` WHERE ct_id = %d",
+						$ctCalEntry->getId()
+					));
 				}
 			}        
 		}
@@ -503,12 +560,12 @@ function processCalendarEntry(Appointment $ctCalEntry, array $calendars_categori
 
 /**
  * Find an existing location or create a new one and return the location id to associate with the event
- * 
- * @param CTApi\Models\Calendars\Appointment\Address $appointmentAddress
- * @return type a location id, either a found location or a newly created one
+ *
+ * @param Address|null $appointmentAddress The appointment address
+ * @return int|null Location id, either a found location or a newly created one
  */
-function getCreateLocation(Address $appointmentAddress) {
-     if ($appointmentAddress != null) {
+function getCreateLocation(?Address $appointmentAddress): ?int {
+     if ($appointmentAddress !== null) {
          // logDebug("CT Location address is: ".serialize($appointmentAddress));
          $appointmentAddress->getMeetingAt(); // Ortsangabe (Zentrum Ipsach etc.)
          $appointmentAddress->getAddition(); // Weitere Ortsangabe
@@ -555,13 +612,22 @@ function getCreateLocation(Address $appointmentAddress) {
 
 /**
  * Update/create event categories based on the churchtool resources assigned to the appointment
- * 
- * @param int $resourcetype_for_categories
- * @param CTApi\Models\Calendars\Appointment\Appointment $ctCalEntry
- * @param EM_Event $event
- * 
+ *
+ * @param array $calendars_categories_mapping Calendar to category mapping
+ * @param int $resourcetype_for_categories Resource type ID for categories
+ * @param Appointment $ctCalEntry ChurchTools calendar entry
+ * @param EM_Event $event Events Manager event
+ * @param CombinedAppointment|null $combinedAppointment Combined appointment with bookings
+ * @param bool $enableTagCategories Whether to sync CT appointment tags as categories
  */
-function updateEventCategories(array $calendars_categories_mapping, int $resourcetype_for_categories, Appointment $ctCalEntry, EM_Event $event, CombinedAppointment $combinedAppointment)  {
+function updateEventCategories(
+    array $calendars_categories_mapping,
+    int $resourcetype_for_categories,
+    Appointment $ctCalEntry,
+    EM_Event $event,
+    ?CombinedAppointment $combinedAppointment,
+    bool $enableTagCategories = false
+): void {
 
 	$desiredCategories= [];
 	if ($calendars_categories_mapping[$ctCalEntry->getCalendar()->getId()] != null) {
@@ -569,7 +635,7 @@ function updateEventCategories(array $calendars_categories_mapping, int $resourc
 		logDebug('Found category by calendar ID '.$calendars_categories_mapping[$ctCalEntry->getCalendar()->getId()]);
 		array_push($desiredCategories, $calendars_categories_mapping[$ctCalEntry->getCalendar()->getId()]);
 	} else {
-		logDebug('No category found by calendar ID '. $ctCalEntry->getCalendar()->getId().' '.serialize($calendars_categories_mapping));
+		logDebug('No category found by calendar ID ' . $ctCalEntry->getCalendar()->getId() . ' mapping: ' . json_encode($calendars_categories_mapping));
 	}
 
     if ($resourcetype_for_categories > 0) {
@@ -589,6 +655,22 @@ function updateEventCategories(array $calendars_categories_mapping, int $resourc
             }
         }
 	}
+
+    // Add categories from ChurchTools appointment tags
+    if ($enableTagCategories) {
+        $ctTags = $ctCalEntry->getTags();
+        if (!empty($ctTags)) {
+            foreach ($ctTags as $ctTag) {
+                $tagName = $ctTag->getName();
+                if (!empty($tagName)) {
+                    logDebug("Adding category from CT tag: " . $tagName);
+                    array_push($desiredCategories, $tagName);
+                }
+            }
+        } else {
+            logDebug("No tags found for appointment " . $ctCalEntry->getId());
+        }
+    }
 	if (sizeof($desiredCategories) > 0) {
 		$wpDesiredCategories= [];
 		foreach ($desiredCategories as $dcKey => $desiredCategory) {
@@ -617,46 +699,48 @@ function updateEventCategories(array $calendars_categories_mapping, int $resourc
 
 /**
  * Remove no longer existing/found entries
- * We only look for entries in the future (Or more precise the >= $startDate
- * 
- * @param type $startDate       Only look at events starting >= $startDate
- * @param type $processingStart All records with lastSeen < $processingStart are no longer existing
- * 
+ * We only look for entries in the future (Or more precise the >= $startDate)
+ *
+ * @param string $startDate Only look at events starting >= $startDate
+ * @param string $processingStart All records with lastSeen < $processingStart are no longer existing
  */
-function cleanupOldEntries($startDate, $processingStart) {
+function cleanupOldEntries(string $startDate, string $processingStart): void {
     global $wpctsync_tablename;
     global $wpdb;
-    $sql= 'SELECT * FROM `'.$wpctsync_tablename.'` WHERE `event_start` >= \''.$startDate.'\' and last_seen < \''.$processingStart.'\'' ;
-    $result = $wpdb->get_results($sql);
-    // logDebug("Found ".sizeof($result).' events to delete via '.$sql);
+    $result = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM `{$wpctsync_tablename}` WHERE `event_start` >= %s AND last_seen < %s",
+        $startDate,
+        $processingStart
+    ));
+    // logDebug("Found ".sizeof($result).' events to delete');
     // Now process all deletions
     foreach ($result as $key => $toDelRecord) {
-        $delID= $toDelRecord->id; // PK in sync table
-        $ctID= $toDelRecord->ct_id; // CT appintment id in sync table
-        $wpEventID= $toDelRecord->wp_id; // WP event id
+        $delID = $toDelRecord->id; // PK in sync table
+        $ctID = $toDelRecord->ct_id; // CT appointment id in sync table
+        $wpEventID = $toDelRecord->wp_id; // WP event id
         // logDebug("Deleting wp event with id ".$wpEventID);
-        $toDelEvent= new EM_Event($wpEventID);
+        $toDelEvent = new EM_Event($wpEventID);
         if ($toDelEvent != null) {
             $toDelEvent->delete(false);
         }
         logDebug("Deleting mapping entry for ct_id: ".$ctID." via PK id: ".$delID);
-        $wpdb->query($wpdb->prepare("DELETE FROM ".$wpctsync_tablename." WHERE id=".$delID));
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM `{$wpctsync_tablename}` WHERE id = %d",
+            $delID
+        ));
     }
 }
 
-/*
- * $fileURL Download the image file from there
- * $fileName Name of the file to download
- * $postID  Attach to this post
- * $uploadPart should by a string with the year/month of the event to prevent duplicates
- * 
- * return attachmentID
- * 
- * $file is the path to your uploaded file (for example as set in the $_FILE posted file array)
- * $filename is the name of the file
- * first we need to upload the file into the wp upload folder.
+/**
+ * Download and attach an event image
+ *
+ * @param string $fileURL URL to download the image from
+ * @param string $fileName Name of the file to download
+ * @param int $postID WordPress post ID to attach to
+ * @param \DateTime $eventDate Event date for organizing uploads
+ * @return int|null Attachment ID or null on failure
  */
-function downloadEventImage(string $fileURL, string $fileName, int $postID, \DateTime $eventDate) {
+function downloadEventImage(string $fileURL, string $fileName, int $postID, \DateTime $eventDate): ?int {
 	$uploadPart= $eventDate->format('Y/m');
 	// Get upload dir
 	$upload_dir    = wp_upload_dir();
@@ -680,10 +764,15 @@ function downloadEventImage(string $fileURL, string $fileName, int $postID, \Dat
 	} else {
 		logDebug("File not existing: ".$fullFilename);
 	}
-	
-    $upload_file = wp_upload_bits( $fileName, null, file_get_contents($fileURL) , $uploadPart);
+
+	$fileContent = @file_get_contents($fileURL);
+	if ($fileContent === false) {
+		logError("Failed to download image from " . $fileURL);
+		return null;
+	}
+    $upload_file = wp_upload_bits( $fileName, null, $fileContent, $uploadPart);
     if ( ! $upload_file['error'] ) {
-	  logDebug("Result of fileupload :".serialize($upload_file));
+	  logDebug("Result of fileupload: " . json_encode($upload_file));
       // if succesfull insert the new file into the media library (create a new attachment post type).
       $wp_filetype = wp_check_filetype($fileName, null );
 
@@ -707,65 +796,74 @@ function downloadEventImage(string $fileURL, string $fileName, int $postID, \Dat
          set_post_thumbnail( $postID, $attachment_id );
        }
     } else {
-		logError("Error in file upload ".serialize($upload_file));
+		logError("Error in file upload: " . ($upload_file['error'] ?? json_encode($upload_file)));
 	}
     return $attachment_id;
 }
 
-function logDebug($message) {
-    global $wpctsyncDoDebugLog;
-    if ($wpctsyncDoDebugLog) {
-       $logger= plugin_dir_path(__FILE__).'wpcalsync.log';
-       // Usage of logging
-       // $message = 'SOME ERROR'.PHP_EOL;
-       // error_log($message, 3, $logger);
-       error_log("DBG: ".$message. "\n", 3, $logger);
-    }
-}
-
-function logInfo($message) {
-    global $wpctsyncDoInfoLog;
-    if ($wpctsyncDoInfoLog) {
-       $logger= plugin_dir_path(__FILE__).'wpcalsync.log';
-       // Usage of logging
-       // $message = 'SOME ERROR'.PHP_EOL;
-       // error_log($message, 3, $logger);
-       error_log("INF: ".$message. "\n", 3, $logger);
-    }
-}
-
-function logError($message) {
-    $logger= plugin_dir_path(__FILE__).'wpcalsync.log';
-    // Usage of logging
-    // $message = 'SOME ERROR'.PHP_EOL;
-    // error_log($message, 3, $logger);
-    error_log("ERR: ".$message. "\n", 3, $logger);
+/**
+ * Log a debug message
+ *
+ * @param string $message The message to log
+ */
+function logDebug(string $message): void {
+    global $ctwpsync_logger;
+    $ctwpsync_logger->debug($message);
 }
 
 /**
- * Upload a file to the media library using a URL.
- * 
- * @version 1.3
- * @author  Radley Sustaire
- * @see     https://gist.github.com/RadGH/966f8c756c5e142a5f489e86e751eacb
+ * Log an info message
  *
- * @param string $url           URL to be uploaded
- * @param null|string $title    Override the default post_title
- * @param null|string $content  Override the default post_content (Added in 1.3)
- * @param null|string $alt      Override the default alt text (Added in 1.3)
- * @postDate should be the event date to prevent duplicates
- *
- * @return int|false
+ * @param string $message The message to log
  */
-function uploadFromLocalFile( $tmpFile, $title = null, $content = null, $alt = null, $postDate= null ) {
+function logInfo(string $message): void {
+    global $ctwpsync_logger;
+    $ctwpsync_logger->info($message);
+}
+
+/**
+ * Log an error message
+ *
+ * @param string $message The message to log
+ */
+function logError(string $message): void {
+    global $ctwpsync_logger;
+    $ctwpsync_logger->error($message);
+}
+
+/**
+ * Upload a file to the media library from a local file
+ *
+ * @version 1.3
+ * @author Radley Sustaire
+ * @see https://gist.github.com/RadGH/966f8c756c5e142a5f489e86e751eacb
+ *
+ * @param string $tmpFile Path to the temporary file
+ * @param string|null $title Override the default post_title
+ * @param string|null $content Override the default post_content
+ * @param string|null $alt Override the default alt text
+ * @param string|null $postDate Event date to prevent duplicates (Y/m format)
+ * @return int|false Attachment ID or false on failure
+ */
+function uploadFromLocalFile(
+    string $tmpFile,
+    ?string $title = null,
+    ?string $content = null,
+    ?string $alt = null,
+    ?string $postDate = null
+): int|false {
 	require_once( ABSPATH . "/wp-load.php");
 	require_once( ABSPATH . "/wp-admin/includes/image.php");
 	require_once( ABSPATH . "/wp-admin/includes/file.php");
 	require_once( ABSPATH . "/wp-admin/includes/media.php");
 	
     
-    $invalidRightsHeader= "Keine ausreichende Berechtigung"; // File starts with this content when rights are missing
-    $fileContent = file_get_contents($tmpFile, false, null, 0, 64);
+    $invalidRightsHeader = "Keine ausreichende Berechtigung"; // File starts with this content when rights are missing
+    $fileContent = @file_get_contents($tmpFile, false, null, 0, 64);
+    if ($fileContent === false) {
+        logError("Failed to read local file: " . $tmpFile);
+        return false;
+    }
     if (str_starts_with($fileContent, $invalidRightsHeader)) {
         logError("Not enough rights to access file ".$tmpFile);
         // wp_delete_file($tmpFile);
@@ -851,12 +949,12 @@ function uploadFromLocalFile( $tmpFile, $title = null, $content = null, $alt = n
 
 /**
  * Add the flyer link to the post content and return the new post content
- * 
- * @param type $postContent
- * @param type $wpFlyerId
- * @return string
+ *
+ * @param string $postContent The existing post content
+ * @param int $wpFlyerId WordPress attachment ID of the flyer
+ * @return string The post content with flyer link
  */
-function addFlyerLink($postContent, $wpFlyerId) {
+function addFlyerLink(string $postContent, int $wpFlyerId): string {
     $flyerLink= wp_get_attachment_url( $wpFlyerId );
     //Tries to replace "#FLYER:Link-Title:#" with a html link. $count is updated to check whether the call succeeded
     $infoAndFlyer = preg_replace('/#FLYER:(.*?):#/', '<a href="'.$flyerLink.'" target="_blank">$1</a>', $postContent, 1, $count);
@@ -872,13 +970,13 @@ function addFlyerLink($postContent, $wpFlyerId) {
 }
 
 /**
- * Get the post for this uploaded file
+ * Get the attachment ID for an uploaded file by filename
  *
- * $subPath   for example 2025/06
- * $param $filename for example "MyPicture.png"
- * 
+ * @param string $subPath Sub-path like "2025/06"
+ * @param string $filename Filename like "MyPicture.png"
+ * @return int|false Attachment ID or false if not found
  */
-function get_attachment_id_by_filename($subPath, $filename) {
+function get_attachment_id_by_filename(string $subPath, string $filename): int|false {
     $query = new WP_Query([
         'post_type' => 'attachment',
         'post_status' => 'inherit',
@@ -904,8 +1002,10 @@ function get_attachment_id_by_filename($subPath, $filename) {
  * - post_status = "publish" (required for proper display in EM 7.x)
  *
  * This function is called automatically on plugin load if migration hasn't been run yet.
+ *
+ * @return array{total: int, updated: int, errors: int}|null Migration results
  */
-function ctwpsync_migrate_to_em71() {
+function ctwpsync_migrate_to_em71(): ?array {
     global $wpdb;
     global $wpctsync_tablename;
 
@@ -913,7 +1013,7 @@ function ctwpsync_migrate_to_em71() {
     $migration_completed = get_option('ctwpsync_em71_migration_completed');
     if ($migration_completed) {
         logDebug("Events Manager 7.1+ migration already completed, skipping");
-        return;
+        return null;
     }
 
     logInfo("Starting Events Manager 7.1+ migration for existing events");
@@ -924,7 +1024,7 @@ function ctwpsync_migrate_to_em71() {
     if (!$mapped_events || count($mapped_events) == 0) {
         logInfo("No existing events found to migrate");
         update_option('ctwpsync_em71_migration_completed', true);
-        return;
+        return null;
     }
 
     $total_events = count($mapped_events);
@@ -988,17 +1088,19 @@ function ctwpsync_migrate_to_em71() {
 
 /**
  * Migrate existing events to Events Manager 7.2+ format
- * Sets the eventarchetype field to "event" for all existing events
+ * Sets the event_archetype field to "event" for all existing events
  * This is required for events to be displayed in Events Manager 7.2+
+ *
+ * @return array{updated: int}|null Migration results
  */
-function ctwpsync_migrate_to_em72() {
+function ctwpsync_migrate_to_em72(): ?array {
     global $wpdb;
 
     // Check if migration has already been run (v2 uses correct field name with underscore)
     $migration_completed = get_option('ctwpsync_em72_migration_completed_v2');
     if ($migration_completed) {
         logDebug("Events Manager 7.2+ migration already completed, skipping");
-        return;
+        return null;
     }
 
     logInfo("Starting Events Manager 7.2+ migration for existing events (event_archetype field)");
@@ -1012,7 +1114,7 @@ function ctwpsync_migrate_to_em72() {
     if (count($column_exists) == 0) {
         logInfo("event_archetype column does not exist in em_events table, skipping migration");
         update_option('ctwpsync_em72_migration_completed_v2', true);
-        return;
+        return null;
     }
 
     // Update all events where event_archetype is NULL to "event"
@@ -1024,7 +1126,7 @@ function ctwpsync_migrate_to_em72() {
 
     if ($result === false) {
         logError("Failed to update event_archetype field during migration");
-        return;
+        return null;
     }
 
     // Mark migration as completed
