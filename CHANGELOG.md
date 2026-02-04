@@ -1,6 +1,10 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-04
+- **Events Manager dependency checks**
+  - Added admin notice on all pages when Events Manager is not active
+  - Block plugin activation if Events Manager is not installed
+  - Auto-deactivate plugin when Events Manager is deactivated
 - **Logging improvements**
   - Replaced serialize() with json_encode() for readable log output
   - Improved DateTime logging to use formatted strings
