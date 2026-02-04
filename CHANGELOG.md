@@ -1,6 +1,19 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-04
+- **Logging improvements**
+  - Replaced serialize() with json_encode() for readable log output
+  - Improved DateTime logging to use formatted strings
+- **DateTime validation**
+  - Added checks for invalid date formats from DateTime::createFromFormat()
+  - Events with unparseable dates are now skipped with error logging
+- **Removed session_destroy()**
+  - Removed problematic session_destroy() call from exception handler
+- **Input validation**
+  - Added URL format validation using esc_url_raw() and filter_var()
+  - Added range clamping for import_past (-365 to 365 days) and import_future (-365 to 730 days)
+  - Added validation for calendar IDs (must be numeric and positive)
+  - Added sanitize_text_field() for text inputs
 - **Improved error handling**
   - Added try-catch for ChurchTools API calls (AppointmentRequest, CombinedAppointmentRequest, FileRequest)
   - Added error checking for file_get_contents when downloading images
