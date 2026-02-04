@@ -3,6 +3,7 @@
 This file contains identified issues and improvements from code review that should be addressed in future updates.
 
 ## Completed (2026-02-04)
+- [x] AJAX with saved token - Fixed Validate Connection, Load Calendars, Load Resource Types buttons to work with saved API token
 - [x] Logging improvements - Replaced serialize() with json_encode() and formatted output
 - [x] DateTime validation - Added checks for invalid date formats from createFromFormat()
 - [x] Session destruction removed - Removed problematic session_destroy() from catch block

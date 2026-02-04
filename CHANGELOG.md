@@ -1,6 +1,10 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-04
+- **Fix AJAX calls with saved token**
+  - Validate Connection, Load Calendars, and Load Resource Types buttons now work when an API token is already saved
+  - JavaScript now passes `use_saved_token` flag to PHP when token field is empty but token is saved
+  - PHP AJAX handlers retrieve saved token from options when flag is set
 - **Events Manager dependency checks**
   - Added admin notice on all pages when Events Manager is not active
   - Block plugin activation if Events Manager is not installed

@@ -186,9 +186,15 @@ jQuery(document).ready(function($) {
 	function validateConnection() {
 		var url = $('#ctwpsync_url').val();
 		var token = $('#ctwpsync_apitoken').val();
+		var hasSavedToken = $('#ctwpsync_has_saved_token').val() === '1';
 
-		if (!url || !token) {
-			$('#ctwpsync_validation_result').html('<span style="color:red;" title="Both URL and API token are required to test the connection">Please enter URL and API token first</span>');
+		if (!url) {
+			$('#ctwpsync_validation_result').html('<span style="color:red;" title="URL is required to test the connection">Please enter URL first</span>');
+			return;
+		}
+
+		if (!token && !hasSavedToken) {
+			$('#ctwpsync_validation_result').html('<span style="color:red;" title="API token is required to test the connection">Please enter API token first</span>');
 			return;
 		}
 
@@ -199,6 +205,7 @@ jQuery(document).ready(function($) {
 			action: 'ctwpsync_validate_connection',
 			url: url,
 			token: token,
+			use_saved_token: (!token && hasSavedToken) ? '1' : '0',
 			nonce: nonce
 		}, function(response) {
 			$('#ctwpsync_validate_connection').prop('disabled', false);
@@ -220,9 +227,15 @@ jQuery(document).ready(function($) {
 	function loadCalendars() {
 		var url = $('#ctwpsync_url').val();
 		var token = $('#ctwpsync_apitoken').val();
+		var hasSavedToken = $('#ctwpsync_has_saved_token').val() === '1';
 
-		if (!url || !token) {
-			alert('Please enter URL and API token first');
+		if (!url) {
+			alert('Please enter URL first');
+			return;
+		}
+
+		if (!token && !hasSavedToken) {
+			alert('Please enter API token first');
 			return;
 		}
 
@@ -232,6 +245,7 @@ jQuery(document).ready(function($) {
 			action: 'ctwpsync_get_calendars',
 			url: url,
 			token: token,
+			use_saved_token: (!token && hasSavedToken) ? '1' : '0',
 			nonce: nonce
 		}, function(response) {
 			$('#ctwpsync_load_calendars').prop('disabled', false).text('Load Calendars from ChurchTools');
@@ -318,9 +332,15 @@ jQuery(document).ready(function($) {
 	function loadResourceTypes() {
 		var url = $('#ctwpsync_url').val();
 		var token = $('#ctwpsync_apitoken').val();
+		var hasSavedToken = $('#ctwpsync_has_saved_token').val() === '1';
 
-		if (!url || !token) {
-			alert('Please enter URL and API token first');
+		if (!url) {
+			alert('Please enter URL first');
+			return;
+		}
+
+		if (!token && !hasSavedToken) {
+			alert('Please enter API token first');
 			return;
 		}
 
@@ -331,6 +351,7 @@ jQuery(document).ready(function($) {
 			action: 'ctwpsync_get_resource_types',
 			url: url,
 			token: token,
+			use_saved_token: (!token && hasSavedToken) ? '1' : '0',
 			nonce: nonce
 		}, function(response) {
 			$('#ctwpsync_load_resource_types').prop('disabled', false).text('Load Resource Types');

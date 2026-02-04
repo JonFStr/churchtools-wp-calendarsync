@@ -361,6 +361,15 @@ function ctwpsync_validate_connection_callback(): void {
 
 	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+	$useSavedToken = isset($_POST['use_saved_token']) && $_POST['use_saved_token'] === '1';
+
+	// If no token provided but use_saved_token flag is set, get from saved options
+	if (empty($token) && $useSavedToken) {
+		$saved_data = get_option('ctwpsync_options');
+		if ($saved_data && !empty($saved_data['apitoken'])) {
+			$token = $saved_data['apitoken'];
+		}
+	}
 
 	if (empty($url) || empty($token)) {
 		error_log('[ChurchTools Sync] Connection test failed: URL or API token missing');
@@ -423,6 +432,15 @@ function ctwpsync_get_calendars_callback(): void {
 
 	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+	$useSavedToken = isset($_POST['use_saved_token']) && $_POST['use_saved_token'] === '1';
+
+	// If no token provided but use_saved_token flag is set, get from saved options
+	if (empty($token) && $useSavedToken) {
+		$saved_data = get_option('ctwpsync_options');
+		if ($saved_data && !empty($saved_data['apitoken'])) {
+			$token = $saved_data['apitoken'];
+		}
+	}
 
 	if (empty($url) || empty($token)) {
 		error_log('[ChurchTools Sync] Calendar fetch failed: URL or API token missing');
@@ -485,6 +503,15 @@ function ctwpsync_get_resource_types_callback(): void {
 
 	$url = isset($_POST['url']) ? rtrim(trim($_POST['url']), '/') . '/' : '';
 	$token = isset($_POST['token']) ? trim($_POST['token']) : '';
+	$useSavedToken = isset($_POST['use_saved_token']) && $_POST['use_saved_token'] === '1';
+
+	// If no token provided but use_saved_token flag is set, get from saved options
+	if (empty($token) && $useSavedToken) {
+		$saved_data = get_option('ctwpsync_options');
+		if ($saved_data && !empty($saved_data['apitoken'])) {
+			$token = $saved_data['apitoken'];
+		}
+	}
 
 	if (empty($url) || empty($token)) {
 		error_log('[ChurchTools Sync] Resource types fetch failed: URL or API token missing');
