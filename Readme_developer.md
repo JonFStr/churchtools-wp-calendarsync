@@ -13,9 +13,10 @@ To release a new build do the following steps
   via github actions, resulting in the new zip file
 
 # Used libraries/systems
-- php 8.1+
+- php 8.2+
 - Wordpress 5.x+
 - https://de.wordpress.org/plugins/events-manager
-- https://github.com/5pm-HDH/churchtools-api
+- https://github.com/ref-nidau-ch/churchtools-api/tree/appointment-tag-support
+  Fork of https://github.com/5pm-HDH/churchtools-api
 
-(c) 2023-2024 Aarboard a.schild@aarboard.ch
+(c) 2023-2026 Aarboard a.schild@aarboard.ch

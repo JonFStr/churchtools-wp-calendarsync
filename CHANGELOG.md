@@ -1,6 +1,7 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-04
+- Release v1.3.0
 - **Background sync with "Sync Now" button**
   - Save no longer triggers a sync (preventing timeout issues)
   - New "Sync Now" button triggers sync via WordPress cron in the background
