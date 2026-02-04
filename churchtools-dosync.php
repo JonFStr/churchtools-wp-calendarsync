@@ -150,8 +150,8 @@ function processCalendarEntry(
 		if (!$ctCalEntry->getIsInternal()) {
 			logDebug("Caption: ".$ctCalEntry->getCaption()." StartDate: ".$ctCalEntry->getStartDate()." EndDate: ".$ctCalEntry->getEndDate().
 				" Is allday: ".$ctCalEntry->getAllDay().($isRepeating ? " Is repeating" : " Is not repeating"));
-			logDebug("Start date time" .serialize($ctCalEntry->getStartDateAsDateTime()));
-			logDebug("End date time" .serialize($ctCalEntry->getEndDateAsDateTime()));
+			logDebug("Start date time: " . ($ctCalEntry->getStartDateAsDateTime()?->format('Y-m-d H:i:s T') ?? 'null'));
+			logDebug("End date time: " . ($ctCalEntry->getEndDateAsDateTime()?->format('Y-m-d H:i:s T') ?? 'null'));
 			//logDebug("Object: ".serialize($ctCalEntry));
 			global $wpctsync_tablename;
 			if ($isRepeating) {
@@ -160,7 +160,7 @@ function processCalendarEntry(
 			} else {
 				$sql= $wpdb->prepare('SELECT * FROM `'.$wpctsync_tablename.'` WHERE `ct_id` = %d ;', array($ctCalEntry->getId()));
 			}
-			logDebug(serialize($sql));
+			logDebug("SQL: " . $sql);
 			$result= $wpdb->get_results($sql);
 			$addMode= false;
 			$ct_image_id= null; // CT file id of image
@@ -437,7 +437,7 @@ function processCalendarEntry(
 
 			$saveResult= $event->save();
 			if ($saveResult) {
-				logDebug("Saved ct event id: ".$ctCalEntry->getId(). " WP event ID ".$event->event_id." post id: ".$event->ID." result: ".$saveResult." serialized: ".serialize($saveResult) );
+				logDebug("Saved ct event id: " . $ctCalEntry->getId() . " WP event ID " . $event->event_id . " post id: " . $event->ID);
 
 				// Set post_status to 'publish' so the event is displayed on the website
 				// This is especially important for Events Manager 7.x
@@ -632,7 +632,7 @@ function updateEventCategories(
 		logDebug('Found category by calendar ID '.$calendars_categories_mapping[$ctCalEntry->getCalendar()->getId()]);
 		array_push($desiredCategories, $calendars_categories_mapping[$ctCalEntry->getCalendar()->getId()]);
 	} else {
-		logDebug('No category found by calendar ID '. $ctCalEntry->getCalendar()->getId().' '.serialize($calendars_categories_mapping));
+		logDebug('No category found by calendar ID ' . $ctCalEntry->getCalendar()->getId() . ' mapping: ' . json_encode($calendars_categories_mapping));
 	}
 
     if ($resourcetype_for_categories > 0) {
@@ -769,7 +769,7 @@ function downloadEventImage(string $fileURL, string $fileName, int $postID, \Dat
 	}
     $upload_file = wp_upload_bits( $fileName, null, $fileContent, $uploadPart);
     if ( ! $upload_file['error'] ) {
-	  logDebug("Result of fileupload :".serialize($upload_file));
+	  logDebug("Result of fileupload: " . json_encode($upload_file));
       // if succesfull insert the new file into the media library (create a new attachment post type).
       $wp_filetype = wp_check_filetype($fileName, null );
 
@@ -793,7 +793,7 @@ function downloadEventImage(string $fileURL, string $fileName, int $postID, \Dat
          set_post_thumbnail( $postID, $attachment_id );
        }
     } else {
-		logError("Error in file upload ".serialize($upload_file));
+		logError("Error in file upload: " . ($upload_file['error'] ?? json_encode($upload_file)));
 	}
     return $attachment_id;
 }

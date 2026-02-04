@@ -3,6 +3,7 @@
 This file contains identified issues and improvements from code review that should be addressed in future updates.
 
 ## Completed (2026-02-04)
+- [x] Logging improvements - Replaced serialize() with json_encode() and formatted output
 - [x] DateTime validation - Added checks for invalid date formats from createFromFormat()
 - [x] Session destruction removed - Removed problematic session_destroy() from catch block
 - [x] Input validation - Added URL validation, range clamping for import days, calendar ID validation
@@ -78,14 +79,7 @@ $invalidRightsHeader = __("Insufficient permissions", "ctwpsync");
 - Inconsistent variable naming (camelCase vs snake_case)
 - Inconsistent brace placement
 
-### 9. Logging Improvements
-**File:** `churchtools-dosync.php`
-
-**Issue:** Using `serialize()` in logs is hard to read
-
-**Recommendation:** Use structured logging with proper formatting
-
-### 10. Documentation
+### 9. Documentation
 **Files:** Multiple
 
 **Issue:** Some functions lack proper PHPDoc blocks
