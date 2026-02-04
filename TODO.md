@@ -3,6 +3,8 @@
 This file contains identified issues and improvements from code review that should be addressed in future updates.
 
 ## Completed (2026-02-04)
+- [x] DateTime validation - Added checks for invalid date formats from createFromFormat()
+- [x] Session destruction removed - Removed problematic session_destroy() from catch block
 - [x] Input validation - Added URL validation, range clamping for import days, calendar ID validation
 - [x] Error handling for external API calls - Added try-catch for AppointmentRequest, CombinedAppointmentRequest, FileRequest
 - [x] File download error handling - Added error checking for file_get_contents calls
@@ -63,29 +65,6 @@ $invalidRightsHeader = "Keine ausreichende Berechtigung";
 ```php
 $invalidRightsHeader = __("Insufficient permissions", "ctwpsync");
 ```
-
-### 6. DateTime Validation
-**File:** `churchtools-dosync.php`
-**Lines:** 250-252, 305-306
-
-**Issue:** `DateTime::createFromFormat()` returns false on invalid format but result not checked
-
-**Recommendation:**
-```php
-$sDate = \DateTime::createFromFormat('Y-m-d', $ctCalEntry->getStartDate());
-if (!$sDate) {
-    logError("Invalid start date format: " . $ctCalEntry->getStartDate());
-    return;
-}
-```
-
-### 7. Session Destruction
-**File:** `churchtools-dosync.php`
-**Line:** 112
-
-**Issue:** `session_destroy()` called in catch block - affects entire session
-
-**Recommendation:** Remove or replace with more targeted cleanup
 
 ---
 

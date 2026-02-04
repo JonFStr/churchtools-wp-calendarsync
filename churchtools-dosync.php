@@ -123,7 +123,6 @@ try {
     $errorMessage = $e->getMessage();
     logError($errorMessage);
     $hasError = true;
-    session_destroy();
 }
 logInfo("End sync cycle " . date('Y-m-d H:i:s'));
 
@@ -279,6 +278,11 @@ function processCalendarEntry(
 			} else {
 				$sDate= \DateTime::createFromFormat('Y-m-d\TH:i:s+', $ctCalEntry->getStartDate(), new DateTimeZone('UTC'));
 			}
+			if ($sDate === false) {
+				logError("Invalid start date format for ct_id " . $ctCalEntry->getId() . ": " . $ctCalEntry->getStartDate());
+				$wpdb->query('COMMIT');
+				return;
+			}
 			// Look into event and resources
 			$combinedAppointment = null;
 			try {
@@ -342,6 +346,11 @@ function processCalendarEntry(
 			if ($ctCalEntry->getAllDay() === "true") {
 				$sDate= \DateTime::createFromFormat('Y-m-d', $ctCalEntry->getStartDate(), new DateTimeZone('UTC'));
 				$eDate= \DateTime::createFromFormat('Y-m-d', $ctCalEntry->getEndDate(), new DateTimeZone('UTC'));
+				if ($sDate === false || $eDate === false) {
+					logError("Invalid date format for all-day event ct_id " . $ctCalEntry->getId() . ": start=" . $ctCalEntry->getStartDate() . ", end=" . $ctCalEntry->getEndDate());
+					$wpdb->query('COMMIT');
+					return;
+				}
 				logDebug("StartDate: ".$sDate->format('Y-m-d H:i:s'));
 				$event->event_start_date= $sDate->format('Y-m-d');
 				$event->event_end_date= $eDate->format('Y-m-d');
