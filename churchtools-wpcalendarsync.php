@@ -29,6 +29,51 @@
 require_once plugin_dir_path(__FILE__) . 'includes/Logger.php';
 require_once plugin_dir_path(__FILE__) . 'includes/SyncConfig.php';
 
+/**
+ * Check if Events Manager plugin is active
+ *
+ * @return bool True if Events Manager is active
+ */
+function ctwpsync_is_events_manager_active(): bool {
+	if (!function_exists('is_plugin_active')) {
+		include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+	}
+	return is_plugin_active('events-manager/events-manager.php');
+}
+
+/**
+ * Show admin notice if Events Manager is not active
+ */
+add_action('admin_notices', 'ctwpsync_admin_notice_events_manager_required');
+function ctwpsync_admin_notice_events_manager_required(): void {
+	if (ctwpsync_is_events_manager_active()) {
+		return;
+	}
+	?>
+	<div class="notice notice-error">
+		<p><strong>ChurchTools Calendar Sync:</strong> This plugin requires the <a href="https://wordpress.org/plugins/events-manager/">Events Manager</a> plugin to be installed and activated.</p>
+	</div>
+	<?php
+}
+
+/**
+ * Deactivate this plugin if Events Manager is deactivated
+ */
+add_action('deactivated_plugin', 'ctwpsync_check_events_manager_deactivation');
+function ctwpsync_check_events_manager_deactivation(string $plugin): void {
+	if ($plugin === 'events-manager/events-manager.php') {
+		// Events Manager was deactivated, deactivate this plugin too
+		deactivate_plugins(plugin_basename(__FILE__));
+		add_action('admin_notices', function() {
+			?>
+			<div class="notice notice-warning is-dismissible">
+				<p><strong>ChurchTools Calendar Sync</strong> has been deactivated because it requires the Events Manager plugin.</p>
+			</div>
+			<?php
+		});
+	}
+}
+
 add_action('admin_menu', 'ctwpsync_setup_menu');
 add_action('save_ctwpsync_settings', 'save_ctwpsync_settings');
 
@@ -117,6 +162,16 @@ function save_ctwpsync_settings(): void {
  */
 register_activation_hook(__FILE__, 'ctwpsync_activation');
 function ctwpsync_activation(): void {
+	// Check if Events Manager is active before allowing activation
+	if (!ctwpsync_is_events_manager_active()) {
+		deactivate_plugins(plugin_basename(__FILE__));
+		wp_die(
+			'<strong>ChurchTools Calendar Sync</strong> requires the <a href="https://wordpress.org/plugins/events-manager/">Events Manager</a> plugin to be installed and activated first.',
+			'Plugin Activation Error',
+			['back_link' => true]
+		);
+	}
+
 	// Clear ALL existing scheduled events for this hook first to prevent duplicates
 	// This is necessary because wp_next_scheduled() doesn't check arguments,
 	// so multiple events with different args can be scheduled
