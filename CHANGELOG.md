@@ -1,6 +1,20 @@
 # churchtools-wp-calendarsync changelog
 
 ## 2026-02-04
+- **Background sync with "Sync Now" button**
+  - Save no longer triggers a sync (preventing timeout issues)
+  - New "Sync Now" button triggers sync via WordPress cron in the background
+  - Sync runs independently of the UI, preventing page timeouts
+- **Sync status display**
+  - New "Sync Status" section shows current status (Idle/In Progress)
+  - Shows last sync time and duration
+  - Shows next scheduled sync time with countdown in minutes
+  - Shows sync schedule (every 57 minutes)
+  - Status auto-updates via AJAX polling after triggering a sync
+- **Changed sync interval to 57 minutes**
+  - Avoids always running at the top of the hour (xx:00)
+  - Spreads server load more evenly over time
+  - Automatic migration from old hourly schedule on plugin load
 - **Fix AJAX calls with saved token**
   - Validate Connection, Load Calendars, and Load Resource Types buttons now work when an API token is already saved
   - JavaScript now passes `use_saved_token` flag to PHP when token field is empty but token is saved

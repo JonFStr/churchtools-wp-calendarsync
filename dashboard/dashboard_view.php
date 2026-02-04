@@ -76,8 +76,42 @@
 
 		<br><br>
 		<input type="submit" value="Save" class="button button-primary">
-		<p><strong>Last updated:</strong> <?php echo esc_html($lastupdated ?: 'Never'); ?></p>
-		<p><strong>Sync duration:</strong> <?php echo esc_html($lastsyncduration ?: 'N/A'); ?></p>
+		<button type="button" id="ctwpsync_sync_now" class="button" style="margin-left: 10px;">Sync Now</button>
+		<span id="ctwpsync_sync_result" style="margin-left: 10px;"></span>
+
+		<h3>Sync Status</h3>
+		<?php
+		$sync_in_progress = get_transient('churchtools_wpcalendarsync_in_progress');
+		$next_scheduled = ctwpsync_get_next_scheduled('ctwpsync_hourly_event');
+		?>
+		<p><strong>Status:</strong>
+			<span id="ctwpsync_status_indicator">
+			<?php if ($sync_in_progress): ?>
+				<span style="color: orange;">&#9881; Sync in progress (started <?php echo esc_html($sync_in_progress); ?>)</span>
+			<?php else: ?>
+				<span style="color: green;">&#10003; Idle</span>
+			<?php endif; ?>
+			</span>
+		</p>
+		<p><strong>Last sync:</strong> <?php echo esc_html($lastupdated ?: 'Never'); ?></p>
+		<p><strong>Last sync duration:</strong> <?php echo esc_html($lastsyncduration ?: 'N/A'); ?></p>
+		<p><strong>Next scheduled sync:</strong>
+			<?php
+			if ($next_scheduled) {
+				$next_time = date('Y-m-d H:i:s', $next_scheduled);
+				$time_diff = $next_scheduled - time();
+				if ($time_diff > 0) {
+					$minutes = floor($time_diff / 60);
+					echo esc_html($next_time) . ' (in ' . esc_html($minutes) . ' minutes)';
+				} else {
+					echo esc_html($next_time) . ' (imminent)';
+				}
+			} else {
+				echo 'Not scheduled - try deactivating and reactivating the plugin';
+			}
+			?>
+		</p>
+		<p><strong>Schedule:</strong> Runs automatically every 57 minutes</p>
 	</div>
 
 	<hr>
@@ -113,6 +147,11 @@ jQuery(document).ready(function($) {
 	// Load resource types button
 	$('#ctwpsync_load_resource_types').click(function() {
 		loadResourceTypes();
+	});
+
+	// Sync Now button
+	$('#ctwpsync_sync_now').click(function() {
+		triggerSync();
 	});
 
 	// Intercept form submission to validate first
@@ -374,6 +413,87 @@ jQuery(document).ready(function($) {
 			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
 			$('#ctwpsync_resource_types_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorDetail) + '">&#10007; Request failed (hover for details)</span>');
 			console.error('[ChurchTools Sync] Resource types load request failed:', errorDetail);
+		});
+	}
+
+	function triggerSync() {
+		$('#ctwpsync_sync_now').prop('disabled', true).text('Starting...');
+		$('#ctwpsync_sync_result').html('<span style="color:blue;">Scheduling sync...</span>');
+
+		$.post(ajaxurl, {
+			action: 'ctwpsync_trigger_sync',
+			nonce: nonce
+		}, function(response) {
+			$('#ctwpsync_sync_now').prop('disabled', false).text('Sync Now');
+			if (response.success) {
+				$('#ctwpsync_sync_result').html('<span style="color:green;">&#10003; ' + escapeHtml(response.data) + '</span>');
+				// Start polling for sync status
+				startStatusPolling();
+				// Clear the message after 10 seconds
+				setTimeout(function() {
+					$('#ctwpsync_sync_result').html('');
+				}, 10000);
+			} else {
+				var errorMsg = response.data || 'Unknown error';
+				$('#ctwpsync_sync_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorMsg) + '">&#10007; Failed (hover for details)</span>');
+				console.error('[ChurchTools Sync] Sync trigger failed:', errorMsg);
+			}
+		}).fail(function(jqXHR, textStatus, errorThrown) {
+			$('#ctwpsync_sync_now').prop('disabled', false).text('Sync Now');
+			var errorDetail = 'HTTP request failed: ' + textStatus + (errorThrown ? ' - ' + errorThrown : '');
+			$('#ctwpsync_sync_result').html('<span style="color:red; cursor:help;" title="' + escapeHtml(errorDetail) + '">&#10007; Request failed (hover for details)</span>');
+			console.error('[ChurchTools Sync] Sync trigger request failed:', errorDetail);
+		});
+	}
+
+	var statusPollInterval = null;
+
+	function startStatusPolling() {
+		// Poll every 5 seconds for up to 10 minutes
+		var pollCount = 0;
+		var maxPolls = 120; // 10 minutes at 5 second intervals
+
+		if (statusPollInterval) {
+			clearInterval(statusPollInterval);
+		}
+
+		updateSyncStatus(); // Immediate first check
+
+		statusPollInterval = setInterval(function() {
+			pollCount++;
+			if (pollCount >= maxPolls) {
+				clearInterval(statusPollInterval);
+				statusPollInterval = null;
+				return;
+			}
+			updateSyncStatus(function(inProgress) {
+				if (!inProgress) {
+					clearInterval(statusPollInterval);
+					statusPollInterval = null;
+				}
+			});
+		}, 5000);
+	}
+
+	function updateSyncStatus(callback) {
+		$.post(ajaxurl, {
+			action: 'ctwpsync_get_sync_status',
+			nonce: nonce
+		}, function(response) {
+			if (response.success) {
+				var data = response.data;
+				var statusHtml;
+				if (data.in_progress) {
+					statusHtml = '<span style="color: orange;">&#9881; Sync in progress (started ' + escapeHtml(data.started_at) + ')</span>';
+				} else {
+					statusHtml = '<span style="color: green;">&#10003; Idle</span>';
+				}
+				$('#ctwpsync_status_indicator').html(statusHtml);
+
+				if (callback) {
+					callback(data.in_progress);
+				}
+			}
 		});
 	}
 

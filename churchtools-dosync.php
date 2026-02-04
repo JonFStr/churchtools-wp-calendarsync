@@ -69,6 +69,7 @@ if (!is_user_logged_in()) {
 
 $startTimestamp = date('Y-m-d H:i:s');
 logInfo("Start sync cycle {$startTimestamp}");
+set_transient('churchtools_wpcalendarsync_in_progress', $startTimestamp, 600); // 10 min max
 try {
 	set_time_limit(300); // 5min to process all events
 
@@ -119,10 +120,12 @@ try {
     set_transient('churchtools_wpcalendarsync_lastupdated', "{$startTimestamp} to {$endTimestamp}", 0);
     $interval = $edt->diff($sdt);
     set_transient('churchtools_wpcalendarsync_lastsyncduration', $interval->format('%H:%I:%S'), 0);
+    delete_transient('churchtools_wpcalendarsync_in_progress');
 } catch (Exception $e) {
     $errorMessage = $e->getMessage();
     logError($errorMessage);
     $hasError = true;
+    delete_transient('churchtools_wpcalendarsync_in_progress');
 }
 logInfo("End sync cycle " . date('Y-m-d H:i:s'));
 

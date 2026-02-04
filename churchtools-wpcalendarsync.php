@@ -77,6 +77,14 @@ function ctwpsync_check_events_manager_deactivation(string $plugin): void {
 add_action('admin_menu', 'ctwpsync_setup_menu');
 add_action('save_ctwpsync_settings', 'save_ctwpsync_settings');
 
+// Add Settings link to plugin actions on Plugins page
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'ctwpsync_add_settings_link');
+function ctwpsync_add_settings_link(array $links): array {
+	$settings_link = '<a href="' . admin_url('options-general.php?page=churchtools-wpcalendarsync') . '">' . __('Settings', 'ctwpsync') . '</a>';
+	array_unshift($links, $settings_link);
+	return $links;
+}
+
 /**
  * Currently plugin version.
  * Start at version 1.0.0 and use SemVer - https://semver.org
@@ -153,7 +161,42 @@ function save_ctwpsync_settings(): void {
 		add_option('ctwpsync_options', $data);
 	}
 
-	do_action('ctwpsync_includeChurchcalSync');
+	// Note: Sync is no longer triggered on save. Use the "Sync Now" button instead.
+}
+
+/**
+ * Add custom cron schedule for 57 minutes
+ * Using 57 minutes instead of 60 to avoid always running at xx:00
+ */
+add_filter('cron_schedules', 'ctwpsync_add_cron_interval');
+function ctwpsync_add_cron_interval(array $schedules): array {
+	$schedules['every_57_minutes'] = [
+		'interval' => 57 * 60, // 57 minutes in seconds
+		'display'  => __('Every 57 minutes', 'ctwpsync'),
+	];
+	return $schedules;
+}
+
+/**
+ * Get next scheduled time for a hook, regardless of arguments
+ * wp_next_scheduled() requires exact args match, this searches the cron array directly
+ *
+ * @param string $hook_name The hook name to search for
+ * @return int|false Timestamp of next scheduled event or false if not found
+ */
+function ctwpsync_get_next_scheduled(string $hook_name): int|false {
+	$cron_array = _get_cron_array();
+	if (!is_array($cron_array)) {
+		return false;
+	}
+
+	foreach ($cron_array as $timestamp => $cron) {
+		if (isset($cron[$hook_name])) {
+			return $timestamp;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -177,14 +220,13 @@ function ctwpsync_activation(): void {
 	// so multiple events with different args can be scheduled
 	wp_clear_scheduled_hook('ctwpsync_hourly_event');
 
-	// Now schedule a fresh event
-	// Store the logged in user, so the cron job works as the same user
-	$args = [is_user_logged_in(), wp_get_current_user()];
-	wp_schedule_event(current_time('timestamp'), 'hourly', 'ctwpsync_hourly_event', $args);
+	// Mark that we need to schedule the cron event
+	// The actual scheduling happens in ctwpsync_initplugin() where the filter is guaranteed to be active
+	update_option('ctwpsync_needs_cron_schedule', true);
 }
 
 /**
- * Hook the function to run every hour
+ * Hook the function to run every 57 minutes
  *
  * We need to pass in the user
  */
@@ -216,36 +258,75 @@ function ctwpsync_deactivation(): void {
 function ctwpsync_initplugin(): void {
     global $wpdb;
 
-    // Clean up duplicate cron events that may have been created
-    // Get all scheduled events for our hook
-    $cron_array = _get_cron_array();
     $hook_name = 'ctwpsync_hourly_event';
-    $scheduled_events = array();
+    $cron_scheduled_this_request = false;
 
-    if (is_array($cron_array)) {
-        foreach ($cron_array as $timestamp => $cron) {
-            if (isset($cron[$hook_name])) {
-                foreach ($cron[$hook_name] as $hash => $event) {
-                    $scheduled_events[] = array(
-                        'timestamp' => $timestamp,
-                        'hash' => $hash,
-                        'args' => isset($event['args']) ? $event['args'] : array()
-                    );
-                }
-            }
+    // Check if we need to schedule cron (set during activation)
+    // Use atomic check to prevent race conditions with concurrent requests
+    if (get_option('ctwpsync_needs_cron_schedule')) {
+        // Try to acquire lock (delete returns true if option existed)
+        if (delete_option('ctwpsync_needs_cron_schedule')) {
+            // Clear any existing events first
+            wp_clear_scheduled_hook($hook_name);
+
+            // Schedule the cron event now that filters are active
+            $args = [is_user_logged_in(), wp_get_current_user()];
+            wp_schedule_event(time(), 'every_57_minutes', $hook_name, $args);
+            $cron_scheduled_this_request = true;
         }
     }
 
-    // If we have more than one scheduled event, keep only the most recent one
-    if (count($scheduled_events) > 1) {
-        // Sort by timestamp descending (most recent first)
-        usort($scheduled_events, function($a, $b) {
-            return $b['timestamp'] - $a['timestamp'];
-        });
+    // Skip further processing if we just scheduled during this request
+    if ($cron_scheduled_this_request) {
+        // Still run table creation below, but skip cron management
+    } else {
+        // Get all scheduled events for our hook
+        $cron_array = _get_cron_array();
+        $scheduled_events = array();
 
-        // Remove all except the first (most recent) one
-        for ($i = 1; $i < count($scheduled_events); $i++) {
-            wp_unschedule_event($scheduled_events[$i]['timestamp'], $hook_name, $scheduled_events[$i]['args']);
+        if (is_array($cron_array)) {
+            foreach ($cron_array as $timestamp => $cron) {
+                if (isset($cron[$hook_name])) {
+                    foreach ($cron[$hook_name] as $hash => $event) {
+                        $scheduled_events[] = array(
+                            'timestamp' => $timestamp,
+                            'hash' => $hash,
+                            'args' => isset($event['args']) ? $event['args'] : array(),
+                            'schedule' => isset($event['schedule']) ? $event['schedule'] : 'unknown',
+                        );
+                    }
+                }
+            }
+        }
+
+        // Migrate from hourly schedule to every_57_minutes schedule
+        $needs_migration = false;
+        foreach ($scheduled_events as $event) {
+            if ($event['schedule'] === 'hourly') {
+                $needs_migration = true;
+                break;
+            }
+        }
+
+        if ($needs_migration) {
+            // Clear all and reschedule with new interval
+            wp_clear_scheduled_hook($hook_name);
+            $args = [is_user_logged_in(), wp_get_current_user()];
+            wp_schedule_event(time(), 'every_57_minutes', $hook_name, $args);
+        } else if (count($scheduled_events) > 1) {
+            // Clean up duplicate cron events - keep only the earliest one
+            usort($scheduled_events, function($a, $b) {
+                return $a['timestamp'] - $b['timestamp'];
+            });
+
+            // Remove all except the first (earliest) one
+            for ($i = 1; $i < count($scheduled_events); $i++) {
+                wp_unschedule_event($scheduled_events[$i]['timestamp'], $hook_name, $scheduled_events[$i]['args']);
+            }
+        } else if (empty($scheduled_events)) {
+            // No cron event exists - schedule one
+            $args = [is_user_logged_in(), wp_get_current_user()];
+            wp_schedule_event(time(), 'every_57_minutes', $hook_name, $args);
         }
     }
 
@@ -549,6 +630,94 @@ function ctwpsync_get_resource_types_callback(): void {
 		error_log("[ChurchTools Sync] Resource types fetch failed: [{$errorClass}] {$errorMessage}");
 		wp_send_json_error('Failed to fetch resource types: ' . $errorMessage);
 	}
+}
+
+/**
+ * Register AJAX action for triggering sync
+ */
+add_action('wp_ajax_ctwpsync_trigger_sync', 'ctwpsync_trigger_sync_callback');
+
+/**
+ * AJAX callback to trigger a sync in the background via WordPress cron
+ */
+function ctwpsync_trigger_sync_callback(): void {
+	// Verify nonce for security
+	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		error_log('[ChurchTools Sync] Sync trigger failed: Security check failed (invalid nonce)');
+		wp_send_json_error('Security check failed');
+	}
+
+	// Check user permissions
+	if (!current_user_can('manage_options')) {
+		error_log('[ChurchTools Sync] Sync trigger failed: Permission denied for user ' . get_current_user_id());
+		wp_send_json_error('Permission denied');
+	}
+
+	// Check if a sync is already scheduled within the next minute
+	$next_scheduled = wp_next_scheduled('ctwpsync_single_sync_event');
+	if ($next_scheduled && $next_scheduled > time() && $next_scheduled < time() + 60) {
+		wp_send_json_success('Sync already scheduled');
+		return;
+	}
+
+	// Schedule a one-time sync event to run immediately
+	$scheduled = wp_schedule_single_event(time(), 'ctwpsync_single_sync_event');
+
+	if ($scheduled === false) {
+		error_log('[ChurchTools Sync] Failed to schedule sync event');
+		wp_send_json_error('Failed to schedule sync');
+		return;
+	}
+
+	error_log('[ChurchTools Sync] Sync event scheduled, spawning cron');
+
+	// Spawn cron to run the scheduled event
+	spawn_cron();
+
+	wp_send_json_success('Sync started in background');
+}
+
+/**
+ * Handle the single sync event triggered by "Sync Now" button
+ */
+add_action('ctwpsync_single_sync_event', 'ctwpsync_run_single_sync');
+function ctwpsync_run_single_sync(): void {
+	error_log('[ChurchTools Sync] Running single sync event');
+	do_action('ctwpsync_includeChurchcalSync');
+}
+
+/**
+ * Register AJAX action for checking sync status
+ */
+add_action('wp_ajax_ctwpsync_get_sync_status', 'ctwpsync_get_sync_status_callback');
+
+/**
+ * AJAX callback to get current sync status
+ */
+function ctwpsync_get_sync_status_callback(): void {
+	// Verify nonce for security
+	if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ctwpsync_validate')) {
+		wp_send_json_error('Security check failed');
+	}
+
+	// Check user permissions
+	if (!current_user_can('manage_options')) {
+		wp_send_json_error('Permission denied');
+	}
+
+	$sync_in_progress = get_transient('churchtools_wpcalendarsync_in_progress');
+	$last_updated = get_transient('churchtools_wpcalendarsync_lastupdated');
+	$last_duration = get_transient('churchtools_wpcalendarsync_lastsyncduration');
+	$next_scheduled = ctwpsync_get_next_scheduled('ctwpsync_hourly_event');
+
+	wp_send_json_success([
+		'in_progress' => $sync_in_progress ? true : false,
+		'started_at' => $sync_in_progress ?: null,
+		'last_updated' => $last_updated ?: 'Never',
+		'last_duration' => $last_duration ?: 'N/A',
+		'next_scheduled' => $next_scheduled ? date('Y-m-d H:i:s', $next_scheduled) : null,
+		'next_scheduled_minutes' => $next_scheduled ? max(0, floor(($next_scheduled - time()) / 60)) : null,
+	]);
 }
 
 /**
